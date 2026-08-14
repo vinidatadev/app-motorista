@@ -83,7 +83,7 @@
             </div>
 
             <p v-if="clienteSelecionado.status_endereco === 'atualizando' && clienteSelecionado.alterado_por_nome" class="alt-por-info">
-              ⏳ Submetido por <strong>{{ clienteSelecionado.alterado_por_nome }}</strong> em {{ formatarData(clienteSelecionado.alterado_em) }} — aguardando aprovação.
+              ⏳ Submetido por <strong>{{ nomeComEmpresa(clienteSelecionado.alterado_por_nome, clienteSelecionado.alterado_por_empresa) }}</strong> em {{ formatarData(clienteSelecionado.alterado_em) }} — aguardando aprovação.
             </p>
 
             <dl class="grid-info">
@@ -98,7 +98,14 @@
                   {{ clienteSelecionado.latitude ?? '—' }}, {{ clienteSelecionado.longitude ?? '—' }}
                 </dd>
               </div>
-              <div class="full"><dt>Atualizado em</dt><dd>{{ formatarData(clienteSelecionado.updated_at) }}</dd></div>
+              <div class="full">
+                <dt>Atualizado por</dt>
+                <dd v-if="clienteSelecionado.alterado_por_nome">
+                  {{ nomeComEmpresa(clienteSelecionado.alterado_por_nome, clienteSelecionado.alterado_por_empresa) }}
+                  <span class="alt-por-data">em {{ formatarData(clienteSelecionado.alterado_em || clienteSelecionado.updated_at) }}</span>
+                </dd>
+                <dd v-else>{{ formatarData(clienteSelecionado.updated_at) }}</dd>
+              </div>
               <div v-if="clienteSelecionado.ponto_referencia" class="full"><dt>Ponto de referência</dt><dd>{{ clienteSelecionado.ponto_referencia }}</dd></div>
               <div v-if="clienteSelecionado.observacao" class="full"><dt>Observação</dt><dd class="obs">{{ clienteSelecionado.observacao }}</dd></div>
             </dl>
@@ -411,6 +418,13 @@ function formatarData(iso) {
     return new Date(iso).toLocaleString('pt-BR')
   } catch { return iso }
 }
+
+// Nome do usuario com a empresa para identificacao (ex: "Joao (AC)")
+function nomeComEmpresa(nome, empresa) {
+  const n = nome || ''
+  const e = empresa || ''
+  return e ? `${n} (${e})` : n
+}
 </script>
 
 <style scoped>
@@ -465,6 +479,7 @@ function formatarData(iso) {
   background: #fffbeb; color: #92400e; font-size: 0.82rem;
   border: 1px solid #fde68a; line-height: 1.35;
 }
+.alt-por-data { color: #94a3b8; font-size: 0.75rem; }
 
 .grid-info {
   display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem 1.25rem;

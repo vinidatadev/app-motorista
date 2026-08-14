@@ -21,14 +21,24 @@ load_dotenv()
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Migração leve para DBs existentes (create_all nao altera tabelas criadas)
-        await conn.execute(
-            text(
-                "ALTER TABLE cliente_alteracoes "
-                "ADD COLUMN IF NOT EXISTS revisado_por_user_id UUID, "
-                "ADD COLUMN IF NOT EXISTS revisado_por_nome VARCHAR(200)"
-            )
-        )
+        # Migração leve para DBs existentes (create_all nao altera tabelas criadas).
+        # asyncpg nao aceita varios comandos num prepared statement — roda um por vez.
+        for ddl in [
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS empresa VARCHAR(10) NOT NULL DEFAULT 'AC'",
+            "ALTER TABLE clientes ADD COLUMN IF NOT EXISTS alterado_por_empresa VARCHAR(10)",
+            "ALTER TABLE cliente_alteracoes ADD COLUMN IF NOT EXISTS motorista_empresa VARCHAR(10) NOT NULL DEFAULT 'AC'",
+            "ALTER TABLE cliente_alteracoes ADD COLUMN IF NOT EXISTS revisado_por_empresa VARCHAR(10)",
+            "ALTER TABLE cliente_alteracoes ADD COLUMN IF NOT EXISTS revisado_por_user_id UUID",
+            "ALTER TABLE cliente_alteracoes ADD COLUMN IF NOT EXISTS revisado_por_nome VARCHAR(200)",
+            # Backfill: preenche empresa de registros antigos a partir dos users (idempotente)
+            "UPDATE cliente_alteracoes ca SET motorista_empresa = u.empresa FROM users u "
+            "WHERE ca.motorista_user_id = u.id AND ca.motorista_empresa IS NULL",
+            "UPDATE cliente_alteracoes ca SET revisado_por_empresa = u.empresa FROM users u "
+            "WHERE ca.revisado_por_user_id = u.id AND ca.revisado_por_empresa IS NULL",
+            "UPDATE clientes c SET alterado_por_empresa = u.empresa FROM users u "
+            "WHERE c.alterado_por_user_id = u.id AND c.alterado_por_empresa IS NULL",
+        ]:
+            await conn.execute(text(ddl))
     storage.ensure_bucket()
     # Carga inicial de dados fictícios (idempotente — só popula tabelas vazias)
     async with AsyncSessionLocal() as session:

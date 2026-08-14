@@ -25,13 +25,13 @@ ADMIN_EMAIL = "admin@app.com"
 ADMIN_PASSWORD = "admin123"
 ADMIN_NAME = "Administrador Teste"
 
-# Usuarios de exemplo com permissoes diferentes (email, nome, senha, permissoes)
+# Usuarios de exemplo com permissoes diferentes (email, nome, senha, permissoes, empresa)
 _USUARIOS_EXEMPLO = [
-    ("vis@app.com",   "Visualizador Demo", "vis123",   ["visualizar"]),
-    ("editor@app.com","Editor Demo",       "edit123",  ["visualizar", "editar"]),
-    ("full@app.com",  "Cadastros Demo",    "full123",  ["visualizar", "editar", "criar", "exportar"]),
-    ("aprov@app.com", "Aprovador Demo",     "aprov123", ["visualizar", "aprovar"]),
-    ("gest@app.com",  "Gestor Demo",       "gest123",  ["visualizar", "editar", "criar", "deletar", "carga", "exportar", "aprovar"]),
+    ("vis@app.com",   "Visualizador Demo", "vis123",   ["visualizar"],                       "SIN"),
+    ("editor@app.com","Editor Demo",       "edit123",  ["visualizar", "editar"],             "AC"),
+    ("full@app.com",  "Cadastros Demo",    "full123",  ["visualizar", "editar", "criar", "exportar"], "SIN"),
+    ("aprov@app.com", "Aprovador Demo",     "aprov123", ["visualizar", "aprovar"],            "AC"),
+    ("gest@app.com",  "Gestor Demo",       "gest123",  ["visualizar", "editar", "criar", "deletar", "carga", "exportar", "aprovar"], "SIN"),
 ]
 
 
@@ -96,6 +96,7 @@ async def semear_banco(db: AsyncSession) -> dict:
             password_hash=hash_password(ADMIN_PASSWORD),
             auth_provider="local",
             role="admin",
+            empresa="AC",
             permissions=[],
             is_active=True,
         )
@@ -104,12 +105,12 @@ async def semear_banco(db: AsyncSession) -> dict:
         logger.info("[SEED] Admin local criado: %s", ADMIN_EMAIL)
 
         # Usuarios de exemplo com permissoes diferentes
-        for email, name, pwd, perms in _USUARIOS_EXEMPLO:
+        for email, name, pwd, perms, empresa in _USUARIOS_EXEMPLO:
             db.add(User(
                 email=email, name=name,
                 password_hash=hash_password(pwd),
                 auth_provider="local", role="user",
-                permissions=perms, is_active=True,
+                permissions=perms, empresa=empresa, is_active=True,
             ))
             logger.info("[SEED] User criado: %s perms: %s", email, perms)
         criados["usuarios"] = len(_USUARIOS_EXEMPLO)

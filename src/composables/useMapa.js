@@ -85,12 +85,17 @@ async function _reverseOpenCage(lat, lng) {
     const hit = data?.results?.[0]
     if (!hit) return null
     const c = hit.components || {}
+    const nomeCidade = c.city || c.town || c.village || c.municipality || null
+    let bairro = c.suburb || c.neighbourhood || c.quarter || null
+    // OpenCage às vezes devolve o nome da cidade no campo suburb (ex.: Caucaia) — ignora
+    if (bairro && nomeCidade && bairro === nomeCidade) bairro = null
+    const numero = c.house_number === 'S/N' ? '' : (c.house_number || '')
     return {
       cep: c.postcode || null,
       rua: c.road || c.pedestrian || null,
-      numero: c.house_number || '',
-      bairro: c.suburb || c.neighbourhood || c.quarter || null,
-      cidade: c.city || c.town || c.village || c.municipality || null,
+      numero,
+      bairro,
+      cidade: nomeCidade,
       estado: c.state
         ? (UF_POR_NOME[c.state] || c.state_code || c.state.slice(0, 2).toUpperCase())
         : null
@@ -123,11 +128,14 @@ async function _reverseNominatim(lat, lng) {
     const a = data?.address
     if (!a) return null
     const nomeCidade = a.city || a.town || a.village || a.municipality || a.county
+    let bairro = a.suburb || a.neighbourhood || null
+    // Nominatim as vezes devolve o nome da cidade no campo suburb — ignora se igual
+    if (bairro && nomeCidade && bairro === nomeCidade) bairro = null
     return {
       cep: a.postcode || null,
       rua: a.road || null,
-      numero: a.house_number || '',
-      bairro: a.suburb || a.neighbourhood || null,
+      numero: a.house_number === 'S/N' ? '' : (a.house_number || ''),
+      bairro,
       cidade: nomeCidade || null,
       estado: a.state ? (UF_POR_NOME[a.state] || a.state.slice(0, 2).toUpperCase()) : null
     }

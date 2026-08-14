@@ -26,6 +26,13 @@
             </select>
           </div>
           <div class="field">
+            <label>Empresa</label>
+            <select v-model="form.empresa">
+              <option value="AC">AC</option>
+              <option value="SIN">SIN</option>
+            </select>
+          </div>
+          <div class="field">
             <label>Senha {{ editando ? '(deixe vazio p/ não alterar)' : '' }}</label>
             <input v-model="form.password" type="password" :placeholder="editando ? '••••••' : 'min 8 caracteres'" />
           </div>
@@ -73,6 +80,7 @@
               <tr>
                 <th>Nome</th>
                 <th>E-mail</th>
+                <th>Empresa</th>
                 <th>Role</th>
                 <th>Permissões</th>
                 <th>Status</th>
@@ -83,6 +91,7 @@
               <tr v-for="u in usuarios" :key="u.id">
                 <td><strong>{{ u.name }}</strong></td>
                 <td>{{ u.email }}</td>
+                <td><span class="empresa-tag">{{ u.empresa || 'AC' }}</span></td>
                 <td>
                   <span :class="['tag', u.role === 'admin' ? 'tag-admin' : 'tag-user']">{{ u.role }}</span>
                 </td>
@@ -134,7 +143,7 @@ const msgTipo = ref('ok')
 
 const formInit = () => ({
   name: '', email: '', password: '', role: 'user',
-  permissions: [], is_active: true
+  empresa: 'AC', permissions: [], is_active: true
 })
 const form = reactive(formInit())
 
@@ -162,6 +171,7 @@ function editar(u) {
   editando.value = u.id
   Object.assign(form, {
     name: u.name, email: u.email, password: '', role: u.role,
+    empresa: u.empresa || 'AC',
     permissions: [...(u.permissions || [])], is_active: u.is_active
   })
   msg.value = ''
@@ -182,7 +192,7 @@ async function salvar() {
   msg.value = ''
   try {
     if (editando.value) {
-      const payload = { name: form.name, role: form.role, is_active: form.is_active }
+      const payload = { name: form.name, role: form.role, empresa: form.empresa, is_active: form.is_active }
       if (form.role === 'user') payload.permissions = form.permissions
       if (form.password) payload.password = form.password
       await api.users.atualizar(editando.value, payload)
@@ -190,7 +200,7 @@ async function salvar() {
     } else {
       const payload = {
         name: form.name, email: form.email, auth_provider: 'local',
-        role: form.role,
+        role: form.role, empresa: form.empresa,
         permissions: form.role === 'user' ? form.permissions : [],
         password: form.password
       }
@@ -270,6 +280,8 @@ async function remover(u) {
 .tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 5px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }
 .tag-admin { background: #1f5bf0; color: #fff; }
 .tag-user { background: #e2e8f0; color: #475569; }
+
+.empresa-tag { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 5px; font-size: 0.7rem; font-weight: 700; background: #dbeafe; color: #1d4ed8; letter-spacing: 0.03em; }
 
 .perm-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; }
 .chip { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 5px; font-size: 0.68rem; font-weight: 600; background: #eef6ff; color: #1746dc; }

@@ -18,6 +18,8 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     auth_provider: Mapped[str] = mapped_column(String(20), nullable=False)  # 'microsoft' | 'local'
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="user")  # 'admin' | 'user'
+    # Empresa do usuario: 'AC' | 'SIN' (obrigatorio, default 'AC')
+    empresa: Mapped[str] = mapped_column(String(10), nullable=False, default="AC")
     # Permissoes granulares para role='user'. Admin ignora (sempre pode tudo).
     # Valores possiveis: 'visualizar', 'editar', 'criar', 'deletar', 'carga', 'exportar'
     permissions: Mapped[list[str] | None] = mapped_column(
@@ -71,6 +73,7 @@ class Cliente(Base):
     status_endereco: Mapped[str] = mapped_column(String(20), nullable=False, default="aprovado", index=True)
     alterado_por_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     alterado_por_nome: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    alterado_por_empresa: Mapped[str | None] = mapped_column(String(10), nullable=True)
     alterado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -95,6 +98,7 @@ class ClienteAlteracao(Base):
     snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
     motorista_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     motorista_nome: Mapped[str] = mapped_column(String(200), nullable=False)
+    motorista_empresa: Mapped[str] = mapped_column(String(10), nullable=False, default="AC")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pendente", index=True)
     # 'pendente', 'aprovado', 'recusado', 'editado'
     observacao_revisao: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -105,6 +109,7 @@ class ClienteAlteracao(Base):
     # Quem revisou/aprovou/recusou a submissao
     revisado_por_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     revisado_por_nome: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    revisado_por_empresa: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
 
 class ClienteFoto(Base):

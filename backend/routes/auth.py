@@ -29,6 +29,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     name: str
     role: str
+    empresa: str = "AC"
     permissions: list[str] = []
 
 
@@ -36,6 +37,7 @@ class MeResponse(BaseModel):
     email: str
     name: str
     role: str
+    empresa: str = "AC"
     permissions: list[str] = []
     provider: str
 
@@ -47,6 +49,7 @@ async def me(current: Any = Depends(require_user())):
         email=current["email"],
         name=current["name"],
         role=current["role"],
+        empresa=current.get("empresa") or "AC",
         permissions=current.get("permissions", []),
         provider=current["provider"]
     )
@@ -70,8 +73,8 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
             detail="Credenciais inválidas"
         )
 
-    token = create_local_token(str(user.id), user.email, user.name, user.role, user.permissions or [])
-    return TokenResponse(access_token=token, name=user.name, role=user.role, permissions=user.permissions or [])
+    token = create_local_token(str(user.id), user.email, user.name, user.role, user.permissions or [], user.empresa or "AC")
+    return TokenResponse(access_token=token, name=user.name, role=user.role, empresa=user.empresa or "AC", permissions=user.permissions or [])
 
 
 @router.post("/setup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -91,6 +94,7 @@ async def setup_first_admin(request: Request, body: SetupRequest, db: AsyncSessi
         password_hash=hash_password(body.password),
         auth_provider="local",
         role="admin",
+        empresa="AC",
         permissions=[],
         is_active=True
     )
@@ -98,5 +102,5 @@ async def setup_first_admin(request: Request, body: SetupRequest, db: AsyncSessi
     await db.commit()
     await db.refresh(admin)
 
-    token = create_local_token(str(admin.id), admin.email, admin.name, admin.role)
-    return TokenResponse(access_token=token, name=admin.name, role=admin.role)
+    token = create_local_token(str(admin.id), admin.email, admin.name, admin.role, empresa="AC")
+    return TokenResponse(access_token=token, name=admin.name, role=admin.role, empresa="AC")

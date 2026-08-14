@@ -37,12 +37,13 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # ---------- JWT local ----------
 
-def create_local_token(user_id: str, email: str, name: str, role: str, permissions: list[str] | None = None) -> str:
+def create_local_token(user_id: str, email: str, name: str, role: str, permissions: list[str] | None = None, empresa: str = "AC") -> str:
     payload = {
         "sub": str(user_id),   # UUID real do usuário
         "email": email,
         "name": name,
         "role": role,
+        "empresa": empresa,
         "permissions": permissions or [],
         "provider": "local",
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_H)
@@ -174,6 +175,7 @@ def require_user(required_role: str | None = None):
             "email": str(user.email),
             "name": user.name,
             "role": user.role,
+            "empresa": user.empresa or "AC",
             "permissions": user.permissions or [],
             "provider": provider
         }
@@ -239,6 +241,7 @@ def require_permission(*permissions: str):
             "email": str(user.email),
             "name": user.name,
             "role": user.role,
+            "empresa": user.empresa or "AC",
             "permissions": user.permissions or [],
             "provider": provider
         }

@@ -22,6 +22,7 @@ class UserOut(BaseModel):
     name: str
     auth_provider: str
     role: str
+    empresa: str = "AC"
     permissions: list[str] = []
     is_active: bool
     created_at: str
@@ -31,6 +32,7 @@ class UserOut(BaseModel):
         return cls(
             id=u.id, email=u.email, name=u.name,
             auth_provider=u.auth_provider, role=u.role,
+            empresa=u.empresa or "AC",
             permissions=u.permissions or [],
             is_active=u.is_active, created_at=u.created_at.isoformat()
         )
@@ -41,6 +43,7 @@ class UserCreate(BaseModel):
     name: str = Field(..., min_length=2)
     auth_provider: Literal["local", "microsoft"]
     role: Literal["admin", "user"] = "user"
+    empresa: Literal["AC", "SIN"] = "AC"
     permissions: list[Literal["visualizar","editar","criar","deletar","carga","exportar","aprovar"]] = []
     password: str | None = Field(default=None, min_length=8)
 
@@ -48,6 +51,7 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=2)
     role: Literal["admin", "user"] | None = None
+    empresa: Literal["AC", "SIN"] | None = None
     permissions: list[Literal["visualizar","editar","criar","deletar","carga","exportar","aprovar"]] | None = None
     is_active: bool | None = None
     password: str | None = Field(default=None, min_length=8)
@@ -83,6 +87,7 @@ async def create_user(
         name=body.name,
         auth_provider=body.auth_provider,
         role=body.role,
+        empresa=body.empresa,
         permissions=perms,
         password_hash=hash_password(body.password) if body.password else None
     )
@@ -106,6 +111,8 @@ async def update_user(
 
     if body.name is not None:
         user.name = body.name
+    if body.empresa is not None:
+        user.empresa = body.empresa
     if body.role is not None:
         user.role = body.role
         # Se virou admin, limpa permissoes granulares (nao precisa)
