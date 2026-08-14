@@ -21,6 +21,7 @@ export function carregarSessao() {
     name: payload?.name,
     email: payload?.email,
     role: payload?.role,
+    empresa: payload?.empresa || 'AC',
     permissions: payload?.permissions || []
   }
   return usuario.value
@@ -40,6 +41,7 @@ export async function sincronizarPermissoes() {
         ...usuario.value,
         name: me.name,
         role: me.role,
+        empresa: me.empresa || 'AC',
         permissions: me.permissions || []
       }
     }

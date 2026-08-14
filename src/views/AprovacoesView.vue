@@ -16,6 +16,17 @@
         >{{ s.label }} <span class="count">{{ contagens[s.value] || 0 }}</span></button>
       </div>
 
+      <!-- Filtro por empresa (do motorista que solicitou) -->
+      <div class="filtros-empresa">
+        <span class="filtro-label">Empresa do solicitante:</span>
+        <button
+          v-for="e in empresaList"
+          :key="e.value"
+          :class="['btn-status', { active: filtroEmpresa === e.value }]"
+          @click="mudarFiltroEmpresa(e.value)"
+        >{{ e.label }}</button>
+      </div>
+
       <div v-if="loading" class="placeholder">Carregando...</div>
       <div v-else-if="!alteracoes.length" class="placeholder">
         <div class="empty-icon">✅</div>
@@ -31,10 +42,10 @@
               <h2>{{ alt.cliente_codigo || '—' }} · {{ alt.cliente_nome }}</h2>
             </div>
             <div class="sub-meta">
-              <span class="campo-row"><strong>Submetido por:</strong> {{ alt.motorista_nome }}</span>
+              <span class="campo-row"><strong>Submetido por:</strong> {{ nomeComEmpresa(alt.motorista_nome, alt.motorista_empresa) }}</span>
               <span class="campo-row"><strong>Em:</strong> {{ formatarData(alt.created_at) }}</span>
               <span v-if="alt.revisado_at" class="campo-row"><strong>Revisado em:</strong> {{ formatarData(alt.revisado_at) }}</span>
-              <span v-if="alt.revisado_por_nome" class="campo-row"><strong>Revisado por:</strong> {{ alt.revisado_por_nome }}</span>
+              <span v-if="alt.revisado_por_nome" class="campo-row"><strong>Revisado por:</strong> {{ nomeComEmpresa(alt.revisado_por_nome, alt.revisado_por_empresa) }}</span>
             </div>
           </header>
 
@@ -56,7 +67,7 @@
                 </dl>
               </div>
               <div class="diff-col diff-novo">
-                <h3>✍️ Proposto ({{ alt.motorista_nome }})</h3>
+                <h3>✍️ Proposto ({{ nomeComEmpresa(alt.motorista_nome, alt.motorista_empresa) }})</h3>
                 <dl>
                   <div v-for="campo in diffCampos" :key="campo.key" :class="{ changed: mudou(alt, campo.key) }">
                     <dt>{{ campo.label }}</dt>
@@ -165,10 +176,17 @@ const statusList = [
   { value: '', label: 'Todas' },
 ]
 
+const empresaList = [
+  { value: '', label: 'Todas' },
+  { value: 'AC', label: 'AC' },
+  { value: 'SIN', label: 'SIN' },
+]
+
 const alteracoes = ref([])
 const contagens = ref({})
 const loading = ref(false)
 const filtroStatus = ref('pendente')
+const filtroEmpresa = ref('')
 const processandoId = ref(null)
 const msg = ref('')
 const msgTipo = ref('ok')
@@ -189,8 +207,8 @@ onMounted(() => carregar())
 async function carregar() {
   loading.value = true
   try {
-    // Busca tudo uma vez e conta por status localmente (1 request só)
-    const todas = await api.clientes.alteracoes.listar(null)
+    // Busca tudo uma vez (filtrado por empresa) e conta por status localmente
+    const todas = await api.clientes.alteracoes.listar(null, filtroEmpresa.value || null)
     contagens.value = {
       pendente: todas.filter(x => x.status === 'pendente').length,
       aprovado: todas.filter(x => x.status === 'aprovado').length,
@@ -207,6 +225,11 @@ async function carregar() {
 
 function mudarFiltro(s) {
   filtroStatus.value = s
+  carregar()
+}
+
+function mudarFiltroEmpresa(e) {
+  filtroEmpresa.value = e
   carregar()
 }
 
@@ -233,6 +256,13 @@ function mudou(alt, key) {
 
 function statusLabel(s) {
   return ({ pendente: 'Pendente', aprovado: 'Aprovada', editado: 'Editada', recusado: 'Recusada' })[s] || s
+}
+
+// Exibe nome do usuario com a empresa para identificacao (ex: "Joao (AC)")
+function nomeComEmpresa(nome, empresa) {
+  const n = nome || ''
+  const e = empresa || ''
+  return e ? `${n} (${e})` : n
 }
 
 function formatarData(iso) {
@@ -338,6 +368,8 @@ async function salvarEditar() {
 .page-head p { color: #64748b; font-size: 0.88rem; margin-top: 0.2rem; }
 
 .filtros-status { display: flex; gap: 0.4rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.filtros-empresa { display: flex; align-items: center; gap: 0.4rem; margin: -0.4rem 0 1rem; flex-wrap: wrap; }
+.filtro-label { font-size: 0.78rem; font-weight: 600; color: #64748b; }
 .btn-status {
   padding: 0.4rem 0.85rem; border-radius: 8px; cursor: pointer;
   background: #fff; border: 1px solid #dbe2ee; color: #475569;

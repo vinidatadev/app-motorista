@@ -48,6 +48,7 @@ class ClienteOut(BaseModel):
     observacao: str | None
     status_endereco: str = "aprovado"
     alterado_por_nome: str | None = None
+    alterado_por_empresa: str | None = None
     alterado_em: str | None = None
     fotos: list[FotoOut] = []
     updated_at: str
@@ -72,6 +73,7 @@ class ClienteOut(BaseModel):
             observacao=c.observacao,
             status_endereco=c.status_endereco or "aprovado",
             alterado_por_nome=c.alterado_por_nome,
+            alterado_por_empresa=c.alterado_por_empresa,
             alterado_em=c.alterado_em.isoformat() if c.alterado_em else None,
             fotos=[FotoOut.from_orm(f) for f in (fotos or [])],
             updated_at=c.updated_at.isoformat() if c.updated_at else None,
@@ -494,11 +496,12 @@ async def atualizar_cliente(
                 c.latitude = coords[0]
                 c.longitude = coords[1]
 
-        # Marca como aprovado (foi alterado direto)
+        # Marca como aprovado (foi alterado direto) e registra quem alterou
         c.status_endereco = "aprovado"
-        c.alterado_por_user_id = None
-        c.alterado_por_nome = None
-        c.alterado_em = None
+        c.alterado_por_user_id = UUID(user["user_id"])
+        c.alterado_por_nome = user["name"]
+        c.alterado_por_empresa = user.get("empresa") or "AC"
+        c.alterado_em = datetime.now(timezone.utc)
     else:
         # Motorista: grava snapshot dos campos propostos e marca pendencia
         # Snapshot com TODOS os campos editaveis no estado proposto (mesclando com os atuais)
@@ -525,6 +528,7 @@ async def atualizar_cliente(
         c.status_endereco = "atualizando"
         c.alterado_por_user_id = UUID(user["user_id"])
         c.alterado_por_nome = user["name"]
+        c.alterado_por_empresa = user.get("empresa") or "AC"
         c.alterado_em = datetime.now(timezone.utc)
 
         # Remove submissoes pendentes anteriores deste cliente (mantem apenas a mais nova)
@@ -543,6 +547,7 @@ async def atualizar_cliente(
             snapshot=snapshot,
             motorista_user_id=UUID(user["user_id"]),
             motorista_nome=user["name"],
+            motorista_empresa=user.get("empresa") or "AC",
             status="pendente",
         )
         db.add(alt)
@@ -652,11 +657,13 @@ class AlteracaoOut(BaseModel):
     # Endereco/dados atuais do cliente no momento da submissao (para comparar no diff)
     cliente_atual: dict = {}
     motorista_nome: str
+    motorista_empresa: str = "AC"
     status: str
     observacao_revisao: str | None = None
     created_at: str
     revisado_at: str | None = None
     revisado_por_nome: str | None = None
+    revisado_por_empresa: str | None = None
 
     @classmethod
     def from_orm(cls, a: ClienteAlteracao, cliente: Cliente | None = None):
@@ -668,11 +675,13 @@ class AlteracaoOut(BaseModel):
             snapshot=a.snapshot or {},
             cliente_atual=_cliente_atual_dict(cliente),
             motorista_nome=a.motorista_nome,
+            motorista_empresa=a.motorista_empresa or "AC",
             status=a.status,
             observacao_revisao=a.observacao_revisao,
             created_at=a.created_at.isoformat() if a.created_at else None,
             revisado_at=a.revisado_at.isoformat() if a.revisado_at else None,
             revisado_por_nome=a.revisado_por_nome,
+            revisado_por_empresa=a.revisado_por_empresa,
         )
 
 
@@ -725,15 +734,19 @@ class EditarAlteracaoBody(BaseModel):
 @router.get("/alteracoes", response_model=list[AlteracaoOut])
 async def listar_alteracoes(
     status_filter: str | None = Query(default=None, alias="status"),
+    empresa: str | None = Query(default=None, alias="empresa"),
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_permission("aprovar")),
 ):
-    """Lista submissoes (default: todas; passe ?status=pendente para pendentes)."""
+    """Lista submissoes (default: todas; passe ?status=pendente para pendentes).
+    ?empresa=AC|SIN filtra pelo MOTORISTA que solicitou a alteracao."""
     stmt = select(ClienteAlteracao, Cliente).join(
         Cliente, ClienteAlteracao.cliente_id == Cliente.id, isouter=True
     ).order_by(ClienteAlteracao.created_at.desc())
     if status_filter:
         stmt = stmt.where(ClienteAlteracao.status == status_filter)
+    if empresa:
+        stmt = stmt.where(ClienteAlteracao.motorista_empresa == empresa)
     result = await db.execute(stmt)
     rows = result.all()
     return [AlteracaoOut.from_orm(a, c) for (a, c) in rows]
@@ -780,15 +793,15 @@ async def aprovar_alteracao(
 
     await _aplica_snapshot(c, a.snapshot or {}, db)
 
+    # Status volta a aprovado, mas alterado_por_* continua sendo quem PEDIU (o motorista),
+    # para a pesquisa/histórico mostrar quem solicitou a mudanca.
     c.status_endereco = "aprovado"
-    c.alterado_por_user_id = None
-    c.alterado_por_nome = None
-    c.alterado_em = None
 
     a.status = "aprovado"
     a.revisado_at = datetime.now(timezone.utc)
     a.revisado_por_user_id = UUID(user["user_id"])
     a.revisado_por_nome = user["name"]
+    a.revisado_por_empresa = user.get("empresa") or "AC"
 
     await db.commit()
     await db.refresh(a)
@@ -813,6 +826,7 @@ async def recusar_alteracao(
         c.status_endereco = "aprovado"
         c.alterado_por_user_id = None
         c.alterado_por_nome = None
+        c.alterado_por_empresa = None
         c.alterado_em = None
 
     a.status = "recusado"
@@ -820,6 +834,7 @@ async def recusar_alteracao(
     a.revisado_at = datetime.now(timezone.utc)
     a.revisado_por_user_id = UUID(user["user_id"])
     a.revisado_por_nome = user["name"]
+    a.revisado_por_empresa = user.get("empresa") or "AC"
 
     await db.commit()
     await db.refresh(a)
@@ -850,9 +865,7 @@ async def editar_e_aprovar_alteracao(
 
     await _aplica_snapshot(c, snapshot, db)
     c.status_endereco = "aprovado"
-    c.alterado_por_user_id = None
-    c.alterado_por_nome = None
-    c.alterado_em = None
+    # alterado_por_* mantém quem PEDIU (o motorista) — o revisor fica em revisado_por_*
 
     # Atualiza o snapshot da submissao com os ajustes e marca como 'editado'/aprovado
     a.snapshot = snapshot
@@ -861,6 +874,7 @@ async def editar_e_aprovar_alteracao(
     a.revisado_at = datetime.now(timezone.utc)
     a.revisado_por_user_id = UUID(user["user_id"])
     a.revisado_por_nome = user["name"]
+    a.revisado_por_empresa = user.get("empresa") or "AC"
 
     await db.commit()
     await db.refresh(a)

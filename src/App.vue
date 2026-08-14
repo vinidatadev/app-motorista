@@ -14,6 +14,7 @@
         <RouterLink v-if="usuario?.role === 'admin'" to="/admin/usuarios" class="nav-btn" active-class="active">Usuários</RouterLink>
       </nav>
       <div class="nav-right">
+        <span class="empresa-badge" :title="`Empresa: ${usuario?.empresa || 'AC'}`">{{ usuario?.empresa || 'AC' }}</span>
         <span class="user-avatar" :title="usuario?.email">{{ iniciais }}</span>
         <button class="btn btn-outline" @click="sair">Sair</button>
       </div>
@@ -113,6 +114,11 @@ function sair() {
 .nav-btn.active { background: #d9eaff; color: #1746dc; font-weight: 600; }
 
 .nav-right { display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0; margin-left: auto; }
+.empresa-badge {
+  padding: 0.16rem 0.55rem; border-radius: 6px;
+  background: #dbeafe; color: #1d4ed8;
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em;
+}
 .user-avatar {
   width: 34px; height: 34px; border-radius: 50%;
   background: linear-gradient(135deg, #3479fb, #1746dc);

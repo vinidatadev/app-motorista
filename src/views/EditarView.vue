@@ -46,7 +46,7 @@
         <div>
           <strong>{{ clienteStatus === 'atualizando' ? 'Endereço submetido para aprovação' : 'Endereço aprovado' }}</strong>
           <span v-if="clienteStatus === 'atualizando' && form.alterado_por_nome">
-            — enviado por <strong>{{ form.alterado_por_nome }}</strong> em {{ formatarData(form.alterado_em) }}
+            — enviado por <strong>{{ nomeComEmpresa(form.alterado_por_nome, form.alterado_por_empresa) }}</strong> em {{ formatarData(form.alterado_em) }}
           </span>
         </div>
       </div>
@@ -417,6 +417,7 @@ async function carregarCliente() {
       observacao: c.observacao ?? '',
       status_endereco: c.status_endereco ?? 'aprovado',
       alterado_por_nome: c.alterado_por_nome ?? null,
+      alterado_por_empresa: c.alterado_por_empresa ?? null,
       alterado_em: c.alterado_em ?? null
     }
     // Assume que o número carregado é o que corresponde à posição atual do pin
@@ -560,6 +561,13 @@ const somenteLeitura = computed(() => form.value?.status_endereco === 'atualizan
 function formatarData(iso) {
   if (!iso) return '—'
   try { return new Date(iso).toLocaleString('pt-BR') } catch { return iso }
+}
+
+// Nome do usuario com a empresa para identificacao (ex: "Joao (AC)")
+function nomeComEmpresa(nome, empresa) {
+  const n = nome || ''
+  const e = empresa || ''
+  return e ? `${n} (${e})` : n
 }
 
 // Endereço completo montado a partir dos campos do formulário (reativo)
@@ -804,6 +812,7 @@ async function salvar() {
     // Remove campos que sao apenas apresentacao (_backend controla por perms)
     delete payload.status_endereco
     delete payload.alterado_por_nome
+    delete payload.alterado_por_empresa
     delete payload.alterado_em
     await api.clientes.atualizar(clienteId.value, payload)
     // Recarrega o cliente para atualizar status/banner pos-save

@@ -102,9 +102,12 @@ export const api = {
     },
     deletarFoto: (clienteId, fotoId) => request('DELETE', `/api/clientes/${clienteId}/fotos/${fotoId}`),
     alteracoes: {
-      listar: (statusFilter = null) => {
-        const qs = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : ''
-        return request('GET', `/api/alteracoes${qs}`)
+      listar: (statusFilter = null, empresaFilter = null) => {
+        const params = new URLSearchParams()
+        if (statusFilter) params.set('status', statusFilter)
+        if (empresaFilter) params.set('empresa', empresaFilter)
+        const qs = params.toString()
+        return request('GET', `/api/alteracoes${qs ? '?' + qs : ''}`)
       },
       aprovar: (altId) => request('POST', `/api/alteracoes/${altId}/aprovar`),
       recusar: (altId, observacao = null) => request('POST', `/api/alteracoes/${altId}/recusar`, { observacao }),
