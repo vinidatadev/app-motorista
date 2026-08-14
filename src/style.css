@@ -1,0 +1,19 @@
+@import 'leaflet/dist/leaflet.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #eef2f9;
+  color: #0f172a;
+}
+
+/* Leaflet: corrige ícones padrão do marcador empacotados pelo Vite */
+.leaflet-default-icon-path {
+  background-image: url('leaflet/dist/images/marker-icon.png');
+}

@@ -1,0 +1,29 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+dist-ssr/
+
+# Env — NUNCA commitar
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# Dados de clientes / arquivos locais (nao subir)
+clientes.xlsx
+comando_auxiliares.txt
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
