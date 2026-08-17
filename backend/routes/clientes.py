@@ -2,7 +2,7 @@ import io
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from typing import Any
-from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, constr
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,12 +11,14 @@ from database import get_db
 from models import Cliente, ClienteFoto, ClienteAlteracao
 from auth import require_permission
 from geocode import geocode_endereco
+from limiter import limiter
 import storage
 
 router = APIRouter(tags=["clientes"])
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
+MAX_CARGA_SIZE = 5 * 1024 * 1024  # 5 MB
 
 # --- Schemas ---
 
@@ -245,7 +247,9 @@ def _parse_valor(v):
 
 
 @router.post("/clientes/carga/preview")
+@limiter.limit("10/minute")
 async def preview_carga(
+    request: Request,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_permission("carga")),
@@ -254,7 +258,14 @@ async def preview_carga(
     import openpyxl
 
     data = await file.read()
-    wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True)
+    if not (file.filename or "").lower().endswith(".xlsx"):
+        raise HTTPException(status_code=422, detail="Envie um arquivo .xlsx")
+    if len(data) > MAX_CARGA_SIZE:
+        raise HTTPException(status_code=422, detail="Arquivo muito grande. Maximo 5 MB.")
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Planilha invalida ou corrompida")
     ws = wb.active
 
     rows = list(ws.iter_rows(values_only=True))
@@ -327,7 +338,9 @@ async def preview_carga(
 
 
 @router.post("/clientes/carga/aplicar")
+@limiter.limit("5/minute")
 async def aplicar_carga(
+    request: Request,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_permission("carga")),
@@ -336,7 +349,14 @@ async def aplicar_carga(
     import openpyxl
 
     data = await file.read()
-    wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True)
+    if not (file.filename or "").lower().endswith(".xlsx"):
+        raise HTTPException(status_code=422, detail="Envie um arquivo .xlsx")
+    if len(data) > MAX_CARGA_SIZE:
+        raise HTTPException(status_code=422, detail="Arquivo muito grande. Maximo 5 MB.")
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Planilha invalida ou corrompida")
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
     if not rows:
@@ -412,7 +432,9 @@ async def aplicar_carga(
 # --- CRUD por ID (depois das rotas estaticas para nao conflitar) ---
 
 @router.post("/clientes", response_model=ClienteOut, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def criar_cliente(
+    request: Request,
     body: ClienteCreate,
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(require_permission("criar")),
@@ -455,7 +477,9 @@ async def obter_cliente(
 
 
 @router.put("/clientes/{cliente_id}", response_model=ClienteOut)
+@limiter.limit("60/minute")
 async def atualizar_cliente(
+    request: Request,
     cliente_id: UUID,
     body: ClienteUpdate,
     db: AsyncSession = Depends(get_db),
@@ -582,7 +606,9 @@ async def deletar_cliente(
 # --- Fotos do cliente ---
 
 @router.post("/clientes/{cliente_id}/fotos", response_model=FotoOut, status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/minute")
 async def upload_foto(
+    request: Request,
     cliente_id: UUID,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
@@ -596,12 +622,21 @@ async def upload_foto(
     if not c:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente nao encontrado")
 
+    # Mesmo bloqueio da edicao: cliente com alteracao pendente nao aceita mudancas
+    if c.status_endereco == "atualizando":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cliente com alteração pendente de aprovação. Anexe fotos após a aprovação."
+        )
+
     data = await file.read()
     if len(data) > MAX_IMAGE_SIZE:
         raise HTTPException(status_code=422, detail="Arquivo muito grande. Maximo 5 MB.")
+    if not storage.validar_imagem(data):
+        raise HTTPException(status_code=422, detail="Conteudo do arquivo nao e uma imagem valida.")
 
     foto_id = uuid4()
-    ext = (file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "jpg").lower()
+    ext = storage.EXT_POR_TIPO.get(file.content_type, "jpg")
     key = f"{cliente_id}/{foto_id}.{ext}"
     url = storage.upload_file(key, data, file.content_type, bucket=storage.CLIENTES_BUCKET)
 
@@ -623,6 +658,13 @@ async def deletar_foto(
     c = await db.get(Cliente, cliente_id)
     if not c:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente nao encontrado")
+
+    # Mesmo bloqueio da edicao: cliente com alteracao pendente nao aceita mudancas
+    if c.status_endereco == "atualizando":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cliente com alteração pendente de aprovação. A alteração será liberada após a aprovação."
+        )
 
     foto = await db.get(ClienteFoto, foto_id)
     if not foto or foto.cliente_id != cliente_id:
