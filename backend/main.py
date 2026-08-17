@@ -19,6 +19,14 @@ load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Segurança: exige JWT_SECRET forte (evita tokens forjados com segredo fraco)
+    jwt_secret = os.getenv("JWT_SECRET") or ""
+    if len(jwt_secret) < 32:
+        raise RuntimeError(
+            "JWT_SECRET ausente ou muito curto (mínimo 32 caracteres). "
+            "Defina um segredo forte no ambiente antes de subir o backend."
+        )
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         # Migração leve para DBs existentes (create_all nao altera tabelas criadas).

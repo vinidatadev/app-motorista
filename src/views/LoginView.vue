@@ -20,11 +20,6 @@
       </form>
 
       <p v-if="erro" class="erro" role="alert">{{ erro }}</p>
-
-      <div class="dica">
-        <strong>Credenciais de teste:</strong><br />
-        admin@app.com · admin123
-      </div>
     </div>
   </div>
 </template>
@@ -38,8 +33,8 @@ import { loginComToken } from '../composables/useAuth'
 const route = useRoute()
 const router = useRouter()
 
-const email = ref('admin@app.com')
-const senha = ref('admin123')
+const email = ref('')
+const senha = ref('')
 const loading = ref(false)
 const erro = ref('')
 

@@ -120,10 +120,12 @@ async def upload_task_image(
     data = await file.read()
     if len(data) > MAX_SIZE:
         raise HTTPException(status_code=422, detail="Arquivo muito grande. Máximo 5 MB.")
+    if not storage.validar_imagem(data):
+        raise HTTPException(status_code=422, detail="Conteúdo do arquivo não é uma imagem válida.")
 
     task = await _get_own_task(db, task_id, current_user["user_id"])
 
-    ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "jpg"
+    ext = storage.EXT_POR_TIPO.get(file.content_type, "jpg")
     key = f"{current_user['user_id']}/{task_id}.{ext}"
     url = storage.upload_file(key, data, file.content_type)
 

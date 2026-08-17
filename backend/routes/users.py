@@ -1,12 +1,13 @@
 from typing import Literal, Any
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from database import get_db
 from models import User
 from auth import hash_password, require_user
+from limiter import limiter
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -67,7 +68,9 @@ async def list_users(
 
 
 @router.post("/", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
 async def create_user(
+    request: Request,
     body: UserCreate,
     db: AsyncSession = Depends(get_db),
     _: Any = Depends(admin_only)

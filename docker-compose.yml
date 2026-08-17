@@ -48,7 +48,8 @@ services:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
         VITE_MAPBOX_TOKEN: ${VITE_MAPBOX_TOKEN:-}
         VITE_OPENCAGE_KEY: ${VITE_OPENCAGE_KEY:-}
-        NGINX_CONF: nginx.local.conf
+        # "nginx.local.conf" (dev) ou "nginx.conf" (prod, CSP rígido + HSTS)
+        NGINX_CONF: ${NGINX_CONF:-nginx.local.conf}
     restart: unless-stopped
     ports:
       - "80:80"

@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
@@ -78,8 +79,18 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
 
 
 @router.post("/setup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
 async def setup_first_admin(request: Request, body: SetupRequest, db: AsyncSession = Depends(get_db)):
-    """Cria o primeiro admin. Desativado automaticamente após o primeiro uso."""
+    """Cria o primeiro admin. Desativado automaticamente após o primeiro uso.
+
+    Só funciona com ALLOW_SETUP=1 no ambiente (default: desligado em produção).
+    """
+    if os.getenv("ALLOW_SETUP", "").strip() != "1":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Setup desativado. Defina ALLOW_SETUP=1 para habilitar."
+        )
+
     count = await db.execute(select(func.count()).select_from(User))
     if count.scalar() > 0:
         logger.warning("[SETUP] Tentativa bloqueada de %s", request.client.host)
