@@ -25,12 +25,26 @@ UF_POR_NOME = {
 }
 
 
+def _s(v):
+    """Normaliza valor para string nao vazia, ou None (aceita numeros/None)."""
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s if s else None
+
+
 def montar_endereco(rua=None, numero=None, bairro=None, cidade=None, estado=None, cep=None) -> str:
     """Monta string de endereco para query Nominatim.
 
     Nominatim e' sensivel a pontuacao — usamos espacos simples, sem hifens
     juntando cidade/estado (ex: 'Fortaleza CE' em vez de 'Fortaleza-CE').
     """
+    rua = _s(rua)
+    numero = _s(numero)
+    bairro = _s(bairro)
+    cidade = _s(cidade)
+    estado = _s(estado)
+    cep = _s(cep)
     partes = []
     if rua or numero:
         partes.append(", ".join(x for x in [rua, numero] if x))
@@ -108,6 +122,11 @@ async def geocode_endereco(rua=None, numero=None, bairro=None, cidade=None, esta
     async with httpx.AsyncClient(timeout=10, headers={"Accept": "application/json", "User-Agent": "app-motorista/1.0"}) as client:
         # Estrategia 1: estruturada (melhor para ruas com acentos/siglas)
         params = dict(params_base)
+        rua = _s(rua)
+        numero = _s(numero)
+        cidade = _s(cidade)
+        estado = _s(estado)
+        cep = _s(cep)
         if rua or numero:
             params["street"] = ", ".join(x for x in [rua, numero] if x)
         if cidade:

@@ -165,5 +165,21 @@ export const api = {
     criar:    (data)          => request('POST',   '/api/users/',      data),
     atualizar: (id, data)     => request('PATCH',   `/api/users/${id}`, data),
     remover:  (id)            => request('DELETE', `/api/users/${id}`)
+  },
+  notificacoes: {
+    listar: () => request('GET', '/api/notificacoes'),
+    marcarLida: (id) => request('POST', `/api/notificacoes/${id}/ler`),
+    marcarTodasLidas: () => request('POST', '/api/notificacoes/ler-todas')
+  },
+  solicitacoes: {
+    listar: (params = {}) => {
+      const qs = new URLSearchParams()
+      if (params.status) qs.set('status', params.status)
+      if (params.tipo) qs.set('tipo', params.tipo)
+      const s = qs.toString()
+      return request('GET', `/api/solicitacoes${s ? '?' + s : ''}`)
+    },
+    criar: (dados) => request('POST', '/api/solicitacoes', dados),
+    status: (id, dados) => request('POST', `/api/solicitacoes/${id}/status`, dados)
   }
 }

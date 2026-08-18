@@ -8,12 +8,11 @@ logger = logging.getLogger(__name__)
 ENDPOINT    = os.getenv("MINIO_ENDPOINT", "minio:9000")
 ACCESS_KEY  = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 SECRET_KEY  = os.getenv("MINIO_SECRET_KEY", "minioadmin")
-BUCKET      = os.getenv("MINIO_BUCKET", "tasks")          # bucket padrao (tarefas)
 CLIENTES_BUCKET = os.getenv("MINIO_CLIENTES_BUCKET", "clientes")  # bucket de fotos de clientes
 PUBLIC_URL  = os.getenv("MINIO_PUBLIC_URL", "http://localhost:9000")
 
 # Buckets que devem ser criados automaticamente na inicializacao
-_ALL_BUCKETS = [BUCKET, CLIENTES_BUCKET]
+_ALL_BUCKETS = [CLIENTES_BUCKET]
 
 
 def _warn_default_creds():
@@ -37,42 +36,47 @@ def _client():
     )
 
 def _ensure_one(s3, name: str):
-    """Cria um bucket e libera leitura publica (GetObject p/ *)."""
+    """Cria um bucket (privado). Acesso só via presigned URLs geradas pela API."""
     try:
         s3.head_bucket(Bucket=name)
     except ClientError:
         s3.create_bucket(Bucket=name)
-        # Torna o bucket publico para leitura
-        s3.put_bucket_policy(Bucket=name, Policy=f'''{{
-            "Version":"2012-10-17",
-            "Statement":[{{
-                "Effect":"Allow",
-                "Principal":"*",
-                "Action":"s3:GetObject",
-                "Resource":"arn:aws:s3:::{name}/*"
-            }}]
-        }}''')
 
 def ensure_bucket():
-    """Garante todos os buckets do app (tasks + clientes)."""
+    """Garante todos os buckets do app (clientes)."""
     s3 = _client()
     for b in _ALL_BUCKETS:
         _ensure_one(s3, b)
 
 def upload_file(key: str, data: bytes, content_type: str, bucket: str | None = None) -> str:
-    """Faz upload e retorna a URL publica ( Usa bucket padrao se nao for informado)."""
-    b = bucket or BUCKET
+    """Faz upload e retorna a URL publica (Usa o bucket de clientes se nao for informado)."""
+    b = bucket or CLIENTES_BUCKET
     s3 = _client()
     s3.put_object(Bucket=b, Key=key, Body=data, ContentType=content_type)
     return f"{PUBLIC_URL}/{b}/{key}"
 
 def delete_file(key: str, bucket: str | None = None):
-    b = bucket or BUCKET
+    b = bucket or CLIENTES_BUCKET
     s3 = _client()
     try:
         s3.delete_object(Bucket=b, Key=key)
     except ClientError:
         pass
+
+
+def presign_url(key: str, bucket: str | None = None, expires: int = 3600) -> str:
+    """Gera URL temporária e autenticada para leitura de um objeto do bucket.
+
+    O bucket é privado; apenas quem recebe esta URL (expira após `expires` s)
+    consegue baixar o arquivo. Não exige rede — a assinatura é calculada localmente.
+    """
+    b = bucket or CLIENTES_BUCKET
+    s3 = _client()
+    return s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": b, "Key": key},
+        ExpiresIn=expires,
+    )
 
 def extract_key_from_url(url: str) -> tuple[str, str] | None:
     """Extrai (bucket, key) de uma URL publica gerada por upload_file.

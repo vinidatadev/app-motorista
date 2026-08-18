@@ -10,6 +10,7 @@ const routes = [
   { path: '/clientes/cadastrar', name: 'cadastrar', component: () => import('../views/CadastrarView.vue'), meta: { auth: true, perm: 'criar' } },
   { path: '/clientes/carga', name: 'carga', component: () => import('../views/CargaView.vue'), meta: { auth: true, perm: 'carga' } },
   { path: '/aprovacoes', name: 'aprovacoes', component: () => import('../views/AprovacoesView.vue'), meta: { auth: true, perm: 'aprovar' } },
+  { path: '/solicitacoes', name: 'solicitacoes', component: () => import('../views/SolicitacoesView.vue'), meta: { auth: true } },
   { path: '/admin/usuarios', name: 'usuarios', component: () => import('../views/AdminView.vue'), meta: { auth: true, admin: true } },
   { path: '/sem-acesso', name: 'sem-acesso', component: () => import('../views/SemAcessoView.vue') }
 ]

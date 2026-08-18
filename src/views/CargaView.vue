@@ -3,7 +3,15 @@
     <div class="container">
       <div class="page-head">
         <h1>Carga em Massa via Excel</h1>
-        <p>Suba uma planilha .xlsx com clientes. A coluna <strong>codigo</strong> é a chave: se já existe, o registro é atualizado; se não, é criado.</p>
+        <p>
+          Suba uma planilha .xlsx com clientes. A coluna <strong>codigo</strong> é a chave:
+          se já existe, o registro é atualizado; se não, é criado.
+        </p>
+        <p class="sub">
+          📍 Uma linha por <strong>endereço</strong>: o mesmo código pode repetir em várias linhas
+          (uma por loja/endereço). Cada linha pode ter até 3 contatos
+          (colunas <code>contato1_nome</code> ... <code>contato3_telefone</code>).
+        </p>
       </div>
 
       <!-- Download do template -->
@@ -55,7 +63,7 @@
             <table class="table">
               <thead>
                 <tr>
-                  <th>Codigo</th><th>Nome</th><th>Telefone</th><th>Cidade</th><th>UF</th>
+                  <th>Codigo</th><th>Nome</th><th>Telefone</th><th>Endereços</th>
                 </tr>
               </thead>
               <tbody>
@@ -63,8 +71,14 @@
                   <td><code>{{ n.codigo || '—' }}</code></td>
                   <td><strong>{{ n.nome_razao_social }}</strong></td>
                   <td>{{ n.telefone || '—' }}</td>
-                  <td>{{ n.cidade || '—' }}</td>
-                  <td>{{ n.estado || '—' }}</td>
+                  <td>
+                    <div v-for="(e, k) in n.enderecos || []" :key="k" class="endresumo">
+                      <span class="chip">{{ e.nome || `Endereço ${k + 1}` }}</span>
+                      <span class="endlinha">{{ [e.rua, e.numero].filter(Boolean).join(', ') || '—' }} · {{ e.cidade || '' }} {{ e.estado || '' }}</span>
+                      <span v-if="(e.contatos || []).length" class="endcontatos">📞 {{ e.contatos.map(c => c.nome).join(', ') }}</span>
+                    </div>
+                    <span v-if="!n.enderecos || !n.enderecos.length" class="muted">sem endereço</span>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -91,6 +105,13 @@
                   <td>
                     <div v-for="(m, campo) in a.mudancas" :key="campo" class="diff">
                       <code>{{ m.de ?? '∅' }}</code> → <code>{{ m.para ?? '∅' }}</code>
+                    </div>
+                    <div v-if="a.enderecos && a.enderecos.length" class="endresumo-wrap">
+                      <div v-for="(e, k) in a.enderecos" :key="k" class="endresumo">
+                        <span class="chip">{{ e.nome || `Endereço ${k + 1}` }}</span>
+                        <span class="endlinha">{{ [e.rua, e.numero].filter(Boolean).join(', ') || '—' }} · {{ e.cidade || '' }} {{ e.estado || '' }}</span>
+                        <span v-if="(e.contatos || []).length" class="endcontatos">📞 {{ e.contatos.map(c => c.nome).join(', ') }}</span>
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -176,8 +197,17 @@ function limpar() {
 
 function baixarTemplate() {
   // Gera um CSV simples com as colunas esperadas para preenchimento
-  const colunas = ['codigo','nome_razao_social','telefone','pessoa_contato','cep','rua','numero','bairro','cidade','estado','latitude','longitude']
-  const csv = colunas.join(',') + '\n' + 'C100,Exemplo Ltda,(11) 9 9999-9999,Joao,01000-000,R. Exemplo,100,Cairro,Cidade,SP,-23.5,-46.6'
+  // (uma linha por endereço; repita o codigo para mais endereços).
+  const colunas = [
+    'codigo','nome_razao_social','telefone','pessoa_contato',
+    'endereco_apelido','cep','rua','numero','bairro','cidade','estado','latitude','longitude',
+    'ponto_referencia','observacao',
+    'contato1_nome','contato1_telefone','contato2_nome','contato2_telefone',
+    'contato3_nome','contato3_telefone'
+  ]
+  const csv = colunas.join(',') + '\n' +
+    'C100,Exemplo Ltda,(11) 9 9999-9999,Joao,Loja 01,01000-000,R. Exemplo,100,Cairro,Sao Paulo,SP,-23.5,-46.6,Perto do mercado,,\n' +
+    'C100,,,Fulano,Loja 02,02000-000,Av. Outra,200,Centro,Sao Paulo,SP,,,Cicrano,(11) 9 8888-7777,'
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -196,6 +226,8 @@ function baixarTemplate() {
 .page-head { margin-bottom: 1.25rem; }
 .page-head h1 { font-size: 1.5rem; font-weight: 700; color: #0f172a; }
 .page-head p { color: #64748b; font-size: 0.88rem; margin-top: 0.2rem; }
+.page-head .sub { font-size: 0.82rem; color: #64748b; margin-top: 0.4rem; line-height: 1.5; }
+.page-head .sub code { background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.76rem; }
 .card { background: #fff; border-radius: 16px; padding: 1.25rem; box-shadow: 0 10px 30px -12px rgba(20,40,90,0.18); border: 1px solid #eef2f8; margin-bottom: 1.1rem; }
 .section-title { font-size: 1rem; font-weight: 700; color: #1d2a4d; margin-bottom: 0.9rem; padding-bottom: 0.6rem; border-bottom: 1px solid #eef2f8; }
 .hint { font-size: 0.82rem; color: #94a3b8; margin-bottom: 0.7rem; }
@@ -231,6 +263,11 @@ function baixarTemplate() {
 .table code { background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.78rem; }
 .chip { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 5px; font-size: 0.7rem; font-weight: 600; background: #eef6ff; color: #1746dc; margin: 0.1rem; }
 .diff { font-size: 0.75rem; color: #64748b; margin-bottom: 0.15rem; }
+.endresumo-wrap { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.4rem; }
+.endresumo { display: flex; flex-direction: column; gap: 0.1rem; padding: 0.35rem 0.5rem; border-left: 3px solid #d9eaff; background: #fafcff; border-radius: 6px; margin-bottom: 0.3rem; }
+.endlinha { font-size: 0.78rem; color: #334155; }
+.endcontatos { font-size: 0.72rem; color: #64748b; }
+.muted { font-size: 0.75rem; color: #94a3b8; font-style: italic; }
 
 .acoes { display: flex; align-items: center; gap: 0.7rem; margin-top: 1rem; flex-wrap: wrap; }
 .msg { font-size: 0.85rem; }

@@ -55,25 +55,57 @@
 
           <!-- Diff com os dados atuais (apenas para pendentes) -->
           <details v-if="alt.status === 'pendente'" class="diff-block" open>
-            <summary>Comparar proposta x endereço atual</summary>
+            <summary>Comparar proposta x dados atuais</summary>
             <div class="diff-grid">
               <div class="diff-col diff-atual">
                 <h3>📍 Atual (aprovado)</h3>
                 <dl>
-                  <div v-for="campo in diffCampos" :key="campo.key">
+                  <div v-for="campo in diffCamposCliente" :key="campo.key">
                     <dt>{{ campo.label }}</dt>
                     <dd>{{ atual(alt, campo.key) || '—' }}</dd>
                   </div>
                 </dl>
+                <div v-if="enderecosAtuais(alt).length" class="enderecos-diff">
+                  <div v-for="(e, i) in enderecosAtuais(alt)" :key="i" class="endereco-diff-card">
+                    <h4>📍 {{ e.nome || `Endereço ${i + 1}` }}</h4>
+                    <div v-for="f in camposEndereco" :key="f.key">
+                      <dt>{{ f.label }}</dt><dd>{{ valStr(e[f.key]) }}</dd>
+                    </div>
+                    <div v-if="e.contatos && e.contatos.length" class="contatos-diff">
+                      <strong>Contatos:</strong>
+                      <span v-for="(ct, j) in e.contatos" :key="j">
+                        {{ ct.nome }}<template v-if="ct.telefone"> ({{ ct.telefone }})</template>{{ j < e.contatos.length - 1 ? ' · ' : '' }}
+                      </span>
+                    </div>
+                    <p v-else class="sem-contato">Sem contatos.</p>
+                  </div>
+                </div>
+                <p v-else class="sem-contato">Sem endereços cadastrados.</p>
               </div>
               <div class="diff-col diff-novo">
                 <h3>✍️ Proposto ({{ nomeComEmpresa(alt.motorista_nome, alt.motorista_empresa) }})</h3>
                 <dl>
-                  <div v-for="campo in diffCampos" :key="campo.key" :class="{ changed: mudou(alt, campo.key) }">
+                  <div v-for="campo in diffCamposCliente" :key="campo.key" :class="{ changed: mudou(alt, campo.key) }">
                     <dt>{{ campo.label }}</dt>
                     <dd>{{ novo(alt, campo.key) || '—' }}</dd>
                   </div>
                 </dl>
+                <div v-if="enderecosPropostos(alt).length" class="enderecos-diff">
+                  <div v-for="(e, i) in enderecosPropostos(alt)" :key="i" class="endereco-diff-card" :class="{ changed: enderecoMudou(alt, i) }">
+                    <h4>📍 {{ e.nome || `Endereço ${i + 1}` }}</h4>
+                    <div v-for="f in camposEndereco" :key="f.key">
+                      <dt>{{ f.label }}</dt><dd>{{ valStr(e[f.key]) }}</dd>
+                    </div>
+                    <div v-if="e.contatos && e.contatos.length" class="contatos-diff">
+                      <strong>Contatos:</strong>
+                      <span v-for="(ct, j) in e.contatos" :key="j">
+                        {{ ct.nome }}<template v-if="ct.telefone"> ({{ ct.telefone }})</template>{{ j < e.contatos.length - 1 ? ' · ' : '' }}
+                      </span>
+                    </div>
+                    <p v-else class="sem-contato">Sem contatos.</p>
+                  </div>
+                </div>
+                <p v-else class="sem-contato">Nenhum endereço proposto.</p>
               </div>
             </div>
           </details>
@@ -82,11 +114,25 @@
           <details v-else class="diff-block">
             <summary>Snapshot enviado</summary>
             <dl class="snap-grid">
-              <div v-for="campo in diffCampos" :key="campo.key">
+              <div v-for="campo in diffCamposCliente" :key="campo.key">
                 <dt>{{ campo.label }}</dt>
                 <dd>{{ novo(alt, campo.key) || '—' }}</dd>
               </div>
             </dl>
+            <div v-if="enderecosPropostos(alt).length" class="enderecos-diff">
+              <div v-for="(e, i) in enderecosPropostos(alt)" :key="i" class="endereco-diff-card">
+                <h4>📍 {{ e.nome || `Endereço ${i + 1}` }}</h4>
+                <div v-for="f in camposEndereco" :key="f.key">
+                  <dt>{{ f.label }}</dt><dd>{{ valStr(e[f.key]) }}</dd>
+                </div>
+                <div v-if="e.contatos && e.contatos.length" class="contatos-diff">
+                  <strong>Contatos:</strong>
+                  <span v-for="(ct, j) in e.contatos" :key="j">
+                    {{ ct.nome }}<template v-if="ct.telefone"> ({{ ct.telefone }})</template>{{ j < e.contatos.length - 1 ? ' · ' : '' }}
+                  </span>
+                </div>
+              </div>
+            </div>
           </details>
 
           <!-- Acoes (somente pendentes) -->
@@ -155,7 +201,13 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { api } from '../api'
 
-const diffCampos = [
+const diffCamposCliente = [
+  { key: 'nome_razao_social', label: 'Nome / Razão Social' },
+  { key: 'telefone', label: 'Telefone' },
+  { key: 'pessoa_contato', label: 'Pessoa de contato' },
+]
+
+const camposEndereco = [
   { key: 'rua', label: 'Rua' },
   { key: 'numero', label: 'Número' },
   { key: 'bairro', label: 'Bairro' },
@@ -167,6 +219,29 @@ const diffCampos = [
   { key: 'ponto_referencia', label: 'Ponto de referência' },
   { key: 'observacao', label: 'Observação' },
 ]
+
+function valStr(v) {
+  if (v === null || v === undefined || v === '') return '—'
+  return String(v)
+}
+
+function enderecosPropostos(alt) {
+  return alt.snapshot?.enderecos || []
+}
+function enderecosAtuais(alt) {
+  return alt.cliente_atual?.enderecos || []
+}
+function enderecoMudou(alt, i) {
+  const p = enderecosPropostos(alt)[i]
+  const a = enderecosAtuais(alt)[i]
+  if (!p) return false
+  if (!a) return true
+  const keys = ['nome', ...camposEndereco.map(c => c.key), 'contatos']
+  for (const k of keys) {
+    if (JSON.stringify(p[k] ?? null) !== JSON.stringify(a[k] ?? null)) return true
+  }
+  return false
+}
 
 const statusList = [
   { value: 'pendente', label: 'Pendentes' },
@@ -420,6 +495,23 @@ async function salvarEditar() {
 .snap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem 1rem; font-size: 0.82rem; margin-top: 0.5rem; }
 .snap-grid dt { color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; }
 .snap-grid dd { color: #1d2a4d; margin-left: 0; }
+
+.enderecos-diff { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.7rem; }
+.endereco-diff-card {
+  border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.6rem 0.75rem;
+  background: #fff;
+}
+.endereco-diff-card h4 { font-size: 0.82rem; font-weight: 700; color: #1d2a4d; margin: 0 0 0.35rem; }
+.endereco-diff-card dt { color: #94a3b8; font-size: 0.66rem; text-transform: uppercase; display: inline; }
+.endereco-diff-card dd { color: #1d2a4d; display: inline; margin-left: 0.3rem; }
+.endereco-diff-card.changed {
+  background: #fff7ed; border-color: #fdba74;
+  box-shadow: 0 0 0 2px rgba(253, 186, 116, 0.25);
+}
+.endereco-diff-card.changed dd, .endereco-diff-card.changed h4 { color: #c2410c; }
+.contatos-diff { margin-top: 0.4rem; font-size: 0.78rem; color: #334155; }
+.contatos-diff strong { color: #64748b; font-weight: 600; }
+.sem-contato { font-size: 0.75rem; color: #94a3b8; font-style: italic; margin: 0.3rem 0 0; }
 
 .acoes-sub { display: flex; gap: 0.5rem; margin-top: 0.9rem; flex-wrap: wrap; }
 

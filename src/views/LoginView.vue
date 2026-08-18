@@ -1,7 +1,7 @@
 <template>
   <div class="login-page">
     <div class="login-card">
-      <div class="logo-badge">AM</div>
+      <img class="logo" :src="logoUrl" alt="Grupo Aço Cearense" />
       <h1>App Motorista</h1>
       <p class="sub">Acesse o painel de gestão de clientes</p>
 
@@ -29,6 +29,7 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import { loginComToken } from '../composables/useAuth'
+import logoUrl from '../assets/grupo_aco_cearense_mono_vertical.png'
 
 const route = useRoute()
 const router = useRouter()
@@ -74,12 +75,12 @@ async function entrar() {
   box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.5);
   text-align: center;
 }
-.logo-badge {
-  width: 56px; height: 56px; margin: 0 auto 0.75rem;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #3479fb, #1746dc);
-  color: white; font-weight: 800; font-size: 1.1rem;
-  display: inline-flex; align-items: center; justify-content: center;
+.logo {
+  width: 170px; margin: 0 auto 0.75rem;
+  display: block;
+  background: #fff;
+  border-radius: 12px;
+  padding: 0.4rem;
 }
 h1 { font-size: 1.6rem; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; }
 .sub { color: #64748b; font-size: 0.92rem; margin-top: 0.25rem; }

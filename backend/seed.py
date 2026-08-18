@@ -14,7 +14,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import hash_password
-from models import User, Cliente
+from models import User, Cliente, ClienteEndereco, ClienteContato
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +29,9 @@ ADMIN_NAME = "Administrador Teste"
 _USUARIOS_EXEMPLO = [
     ("vis@app.com",   "Visualizador Demo", "vis123",   ["visualizar"],                       "SIN"),
     ("editor@app.com","Editor Demo",       "edit123",  ["visualizar", "editar"],             "AC"),
-    ("full@app.com",  "Cadastros Demo",    "full123",  ["visualizar", "editar", "criar", "exportar"], "SIN"),
+    ("full@app.com",  "Cadastros Demo",    "full123",  ["visualizar", "editar", "criar", "exportar", "solicitacoes"], "SIN"),
     ("aprov@app.com", "Aprovador Demo",     "aprov123", ["visualizar", "aprovar"],            "AC"),
-    ("gest@app.com",  "Gestor Demo",       "gest123",  ["visualizar", "editar", "criar", "deletar", "carga", "exportar", "aprovar"], "SIN"),
+    ("gest@app.com",  "Gestor Demo",       "gest123",  ["visualizar", "editar", "criar", "deletar", "carga", "exportar", "aprovar", "solicitacoes"], "SIN"),
 ]
 
 
@@ -120,8 +120,8 @@ async def semear_banco(db: AsyncSession) -> dict:
     total_clientes = (await db.execute(select(func.count()).select_from(Cliente))).scalar() or 0
     if total_clientes == 0:
         agora = datetime.now(timezone.utc)
-        for codigo, nome, tel, contato, cep, rua, num, bairro, cidade, uf, lat, lon in _CLIENTES_FICTICIOS:
-            db.add(Cliente(
+        for i, (codigo, nome, tel, contato, cep, rua, num, bairro, cidade, uf, lat, lon) in enumerate(_CLIENTES_FICTICIOS):
+            c = Cliente(
                 codigo=codigo,
                 nome_razao_social=nome,
                 telefone=tel,
@@ -130,9 +130,42 @@ async def semear_banco(db: AsyncSession) -> dict:
                 cidade=cidade, estado=uf,
                 latitude=lat, longitude=lon,
                 updated_at=agora,
-            ))
+            )
+            db.add(c)
+            await db.flush()
+            # Endereco principal (espelho dos campos flat)
+            e = ClienteEndereco(
+                cliente_id=c.id, nome="Endereço principal", ordem=0,
+                cep=cep, rua=rua, numero=num, bairro=bairro,
+                cidade=cidade, estado=uf, latitude=lat, longitude=lon,
+                created_at=agora, updated_at=agora,
+            )
+            db.add(e)
+            await db.flush()
+            # Contato principal (espelho de pessoa_contato/telefone)
+            if contato or tel:
+                db.add(ClienteContato(
+                    endereco_id=e.id, nome=contato or "", telefone=tel or None,
+                    created_at=agora,
+                ))
+            # Alguns clientes de exemplo ganham uma segunda loja (filial)
+            if i % 5 == 0:
+                filial_cep = f"{cep[:5]}-{str(i).zfill(3)}"
+                db.add(ClienteEndereco(
+                    cliente_id=c.id, nome="Filial (loja 2)", ordem=1,
+                    cep=filial_cep, rua=f"Av. Filial {i + 1}", numero=str(100 + i),
+                    bairro="Centro", cidade=cidade, estado=uf,
+                    latitude=round(lat + 0.01, 8), longitude=round(lon + 0.01, 8),
+                    created_at=agora, updated_at=agora,
+                ))
+            # Alguns enderecos ganham mais de um contato
+            if i % 3 == 0:
+                db.add(ClienteContato(
+                    endereco_id=e.id, nome="Contato extra", telefone=tel,
+                    created_at=agora,
+                ))
         criados["clientes"] = len(_CLIENTES_FICTICIOS)
-        logger.info("[SEED] %d clientes ficticios criados.", len(_CLIENTES_FICTICIOS))
+        logger.info("[SEED] %d clientes ficticios criados (com enderecos/contatos).", len(_CLIENTES_FICTICIOS))
     else:
         logger.info("[SEED] %d clientes ja existem - pulando carga de clientes.", total_clientes)
 

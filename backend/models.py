@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, DateTime, Numeric, ARRAY, JSON
+from sqlalchemy import String, Boolean, DateTime, Numeric, ARRAY, JSON, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from database import Base
@@ -26,21 +26,6 @@ class User(Base):
         ARRAY(String), nullable=True, default=list
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-
-
-class Task(Base):
-    __tablename__ = "tasks"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    title: Mapped[str] = mapped_column(String(200), nullable=False)
-    is_completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    image_url: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -126,3 +111,127 @@ class ClienteFoto(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+
+
+class ClienteEndereco(Base):
+    """Endereco de um cliente (um cliente pode ter N enderecos — ex.: lojas).
+
+    Os campos flat de Cliente (cep/rua/... ) espelham o PRIMEIRO endereco
+    (ordem = 0) para manter compatibilidade com filtros, exportacao e telas
+    antigas.
+    """
+    __tablename__ = "cliente_enderecos"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    cliente_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    # Apelido do endereco (ex.: "Loja 01", "Filial Centro")
+    nome: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Ordem de exibicao (0 = principal)
+    ordem: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cep: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    rua: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    numero: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    bairro: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    cidade: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    estado: Mapped[str | None] = mapped_column(String(2), nullable=True, index=True)
+    latitude: Mapped[float | None] = mapped_column(Numeric(10, 8), nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Numeric(11, 8), nullable=True)
+    ponto_referencia: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    observacao: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class ClienteContato(Base):
+    """Contato de um endereco (um endereco pode ter N contatos).
+
+    Ex.: a "Loja 01" pode ter fulano, cicrano e beltrano como pessoas de contato.
+    """
+    __tablename__ = "cliente_contatos"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    endereco_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    nome: Mapped[str] = mapped_column(String(100), nullable=False)
+    telefone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class Notificacao(Base):
+    """Notificacao para um usuario (sino no frontend, atualizada via WebSocket).
+
+    tipos: 'nova_alteracao' (aprovador tem algo para revisar),
+           'aprovada' | 'recusada' | 'editada' (resposta ao motorista).
+    """
+    __tablename__ = "notificacoes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    # Destinatario
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    tipo: Mapped[str] = mapped_column(String(30), nullable=False)
+    titulo: Mapped[str] = mapped_column(String(200), nullable=False)
+    mensagem: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Rota do frontend para onde navegar ao clicar
+    link: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    cliente_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    alteracao_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    lida: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class Solicitacao(Base):
+    """Solicitacao aberta pelo usuario na pesquisa.
+
+    - tipo 'novo_cliente': cliente nao encontrado na base, pede cadastro.
+    - tipo 'atualizar_contato': cliente existe mas os contatos estao desatualizados.
+
+    O time com permissao 'solicitacoes' (ou admin) trata a solicitacao
+    (conclui/recusa). Ao concluir/recusar, o solicitante recebe notificacao.
+    """
+    __tablename__ = "solicitacoes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tipo: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    # 'aberta' | 'em_andamento' | 'concluida' | 'recusada'
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="aberta", index=True)
+    solicitante_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    solicitante_nome: Mapped[str] = mapped_column(String(200), nullable=False)
+    solicitante_empresa: Mapped[str] = mapped_column(String(10), nullable=False, default="AC")
+    cliente_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    cliente_codigo: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    cliente_nome: Mapped[str] = mapped_column(String(150), nullable=False)
+    descricao: Mapped[str | None] = mapped_column(String(5000), nullable=True)
+    # Resolucao
+    resolvido_por_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    resolvido_por_nome: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    resolvido_por_empresa: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    observacao_resolucao: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    resolvido_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

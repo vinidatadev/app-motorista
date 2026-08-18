@@ -3,7 +3,7 @@
     <div class="container">
       <div class="page-head">
         <h1>Atualização de Cadastro</h1>
-        <p>Selecione o cliente, ajuste dados e geolocalização. Arraste o pin no mapa ou use o GPS.</p>
+        <p>Selecione o cliente, ajuste os dados de cada loja/endereço e a geolocalização. Arraste o pin no mapa ou use o GPS.</p>
       </div>
 
       <!-- Seleção do cliente -->
@@ -44,7 +44,7 @@
       <div v-if="form && clienteStatus !== 'aprovado'" class="status-banner" :class="'status-' + clienteStatus">
         <span class="status-icon">{{ clienteStatus === 'atualizando' ? '⏳' : '✔' }}</span>
         <div>
-          <strong>{{ clienteStatus === 'atualizando' ? 'Endereço submetido para aprovação' : 'Endereço aprovado' }}</strong>
+          <strong>{{ clienteStatus === 'atualizando' ? 'Dados submetidos para aprovação' : 'Dados aprovados' }}</strong>
           <span v-if="clienteStatus === 'atualizando' && form.alterado_por_nome">
             — enviado por <strong>{{ nomeComEmpresa(form.alterado_por_nome, form.alterado_por_empresa) }}</strong> em {{ formatarData(form.alterado_em) }}
           </span>
@@ -60,8 +60,10 @@
       <!-- Formulário de edição -->
       <section v-if="form" class="card form-card">
         <fieldset class="fs-lock" :disabled="somenteLeitura">
+
+        <!-- Dados gerais do cliente -->
         <div class="form-grid">
-          <div class="field full">
+          <div class="field col2">
             <label>Nome / Razão Social</label>
             <input v-model="form.nome_razao_social" />
           </div>
@@ -73,109 +75,151 @@
             <label>Pessoa de Contato</label>
             <input v-model="form.pessoa_contato" />
           </div>
-          <div class="field">
-            <label>CEP</label>
-            <input v-model="form.cep" />
-          </div>
-          <div class="field">
-            <label>Número</label>
-            <input v-model="form.numero" />
-          </div>
-          <div class="field col2">
-            <label>Rua</label>
-            <input v-model="form.rua" />
-          </div>
-          <div class="field">
-            <label>Bairro</label>
-            <input v-model="form.bairro" />
-          </div>
-          <div class="field">
-            <label>Cidade</label>
-            <input v-model="form.cidade" />
-          </div>
-          <div class="field">
-            <label>Estado (UF)</label>
-            <input v-model="form.estado" maxlength="2" class="uf" />
-          </div>
-          <div class="field col2">
-            <label>Ponto de Referência</label>
-            <input v-model="form.ponto_referencia" placeholder="Ex.: próximo ao shopping, esquina com a farmácia..." />
-          </div>
-          <div class="field full">
-            <label>Observação</label>
-            <textarea v-model="form.observacao" rows="3" placeholder="Notações relevantes para o motorista..."></textarea>
-          </div>
         </div>
 
-        <!-- Geolocalização -->
-        <div class="geo-section">
-          <div class="geo-head">
-            <h3>Localização & Mapa</h3>
-            <button class="btn btn-secondary" @click="pegarLocalizacao" :disabled="geo.loading">
-              {{ geo.loading ? 'Obtendo...' : '📍 Pegar Localização Atual' }}
-            </button>
-          </div>
-          <p class="lat-info">
-            Latitude: <strong>{{ form.latitude ?? '—' }}</strong> ·
-            Longitude: <strong>{{ form.longitude ?? '—' }}</strong>
-            <span v-if="geo.erro" class="erro-inline"> · {{ geo.erro }}</span>
-          </p>
-          <div ref="mapaEl" class="mapa" id="mapa-editar"></div>
-          <div class="mapa-acoes">
-            <p class="dica-map">Arraste o marcador para ajustar o endereço (reverse geocoding automático).</p>
-            <button class="btn btn-secondary btn-sm" @click="forwardGeocode" :disabled="!form.rua && !form.cidade">
-              🎯 Reposicionar pin no endereço digitado
-            </button>
-          </div>
-          <div v-if="haDivergenciaNumero()" class="aviso-divergencia">
-            ⚠️ O número digitado (<strong>{{ form.numero }}</strong>) difere da posição do pin no mapa (<strong>{{ numeroDoMapa }}</strong>).
-            Ao salvar, você poderá escolher entre manter assim ou reposicionar o pin.
+        <!-- Abas de endereços -->
+        <div class="endereco-tabs">
+          <button
+            v-for="(end, i) in enderecos"
+            :key="i"
+            :class="['tab-end', { active: i === enderecoAtivo }]"
+            @click="selecionarEndereco(i)"
+          >
+            📍 {{ end.nome || `Endereço ${i + 1}` }}
+          </button>
+          <button class="tab-add" @click="adicionarEndereco" :disabled="somenteLeitura">+ Adicionar</button>
+        </div>
+
+        <!-- Endereço ativo -->
+        <template v-if="endAtivo">
+          <div class="endereco-ativo-head">
+            <h3>🏬 {{ endAtivo.nome || `Endereço ${enderecoAtivo + 1}` }}</h3>
+            <div class="endereco-ativo-acoes">
+              <input v-model="endAtivo.nome" placeholder="Nome/Apelido (ex.: Loja 01)" class="apelido-input" />
+              <button class="btn btn-danger btn-sm" @click="removerEndereco(enderecoAtivo)" :disabled="enderecos.length <= 1" title="Remover endereço">× Remover</button>
+            </div>
           </div>
 
-          <!-- Endereço completo para colar em Waze/Maps -->
-          <div class="endereco-full">
-            <label>Endereço completo para navegação</label>
-            <div class="endereco-row">
-              <input :value="enderecoCompleto" readonly class="endereco-input" />
-              <button class="btn btn-secondary btn-sm" @click="copiarEndereco" :disabled="!enderecoCompleto">
-                {{ copiado ? '✓ Copiado' : '⧉ Copiar' }}
+          <div class="form-grid">
+            <div class="field">
+              <label>CEP</label>
+              <input v-model="endAtivo.cep" />
+            </div>
+            <div class="field">
+              <label>Número</label>
+              <input v-model="endAtivo.numero" />
+            </div>
+            <div class="field col2">
+              <label>Rua</label>
+              <input v-model="endAtivo.rua" />
+            </div>
+            <div class="field">
+              <label>Bairro</label>
+              <input v-model="endAtivo.bairro" />
+            </div>
+            <div class="field">
+              <label>Cidade</label>
+              <input v-model="endAtivo.cidade" />
+            </div>
+            <div class="field">
+              <label>Estado (UF)</label>
+              <input v-model="endAtivo.estado" maxlength="2" class="uf" />
+            </div>
+            <div class="field col2">
+              <label>Ponto de Referência</label>
+              <input v-model="endAtivo.ponto_referencia" placeholder="Ex.: próximo ao shopping, esquina com a farmácia..." />
+            </div>
+            <div class="field full">
+              <label>Observação</label>
+              <textarea v-model="endAtivo.observacao" rows="2" placeholder="Notações relevantes para o motorista..."></textarea>
+            </div>
+          </div>
+
+          <!-- Geolocalização -->
+          <div class="geo-section">
+            <div class="geo-head">
+              <h3>Localização & Mapa</h3>
+              <button class="btn btn-secondary" @click="pegarLocalizacao" :disabled="geo.loading">
+                {{ geo.loading ? 'Obtendo...' : '📍 Pegar Localização Atual' }}
               </button>
             </div>
-
-            <!-- Linha 1: pela posição do pin no mapa -->
-            <div v-if="temCoords" class="nav-group">
-              <div class="nav-group-label">
-                <span class="dot pin"></span> Pelo pin no mapa
-                <span class="nav-coords">{{ numeroDoMapa || 's/ número' }} · {{ enderecoPin.split(',')[0] || 'endereço do pin' }}</span>
-              </div>
-              <div class="nav-links">
-                <a :href="wazeUrl" target="_blank" rel="noopener" class="nav-link waze">Waze ↗</a>
-                <a :href="mapsCoordUrl" target="_blank" rel="noopener" class="nav-link maps">Google Maps ↗</a>
-                <a :href="osmUrl" target="_blank" rel="noopener" class="nav-link osm">OpenStreetMap ↗</a>
-              </div>
-            </div>
-
-            <!-- Linha 2: pelo endereço digitado (usa o número que o usuário informou) -->
-            <div v-if="enderecoCompleto" class="nav-group" :class="{ divergente: haDivergenciaNumero() }">
-              <div class="nav-group-label">
-                <span class="dot texto"></span> Pelo endereço digitado
-                <span class="nav-coords" v-if="haDivergenciaNumero()">({{ form.numero || 's/ número' }} · pode differ do pin)</span>
-              </div>
-              <div class="nav-links">
-                <a :href="wazeTextoUrl" target="_blank" rel="noopener" class="nav-link waze">Waze ↗</a>
-                <a :href="mapsTextoUrl" target="_blank" rel="noopener" class="nav-link maps">Google Maps ↗</a>
-                <a :href="osmTextoUrl" target="_blank" rel="noopener" class="nav-link osm">OpenStreetMap ↗</a>
-              </div>
-            </div>
-
-            <p class="endereco-hint">
-              Copie e cole no app, ou clique num link. Os apps de navegação mostrarão o endereço por extenso.
-              <strong v-if="haDivergenciaNumero()" style="color:#b45309">Atenção: o número digitado ({{ form.numero }}) difere do pin ({{ numeroDoMapa }}) — escolha a opção desejada.</strong>
+            <p class="lat-info">
+              Latitude: <strong>{{ endAtivo.latitude ?? '—' }}</strong> ·
+              Longitude: <strong>{{ endAtivo.longitude ?? '—' }}</strong>
+              <span v-if="geo.erro" class="erro-inline"> · {{ geo.erro }}</span>
             </p>
-          </div>
-        </div>
+            <div :key="'mapa-' + enderecoAtivo" ref="mapaEl" class="mapa" id="mapa-editar"></div>
+            <div class="mapa-acoes">
+              <p class="dica-map">Arraste o marcador para ajustar o endereço (reverse geocoding automático).</p>
+              <button class="btn btn-secondary btn-sm" @click="forwardGeocode" :disabled="!endAtivo.rua && !endAtivo.cidade">
+                🎯 Reposicionar pin no endereço digitado
+              </button>
+            </div>
+            <div v-if="haDivergenciaNumero()" class="aviso-divergencia">
+              ⚠️ O número digitado (<strong>{{ endAtivo.numero }}</strong>) difere da posição do pin no mapa (<strong>{{ numeroDoMapa }}</strong>).
+              Ao salvar, você poderá escolher entre manter assim ou reposicionar o pin.
+            </div>
 
-        <!-- Fotos do local -->
+            <!-- Endereço completo para colar em Waze/Maps -->
+            <div class="endereco-full">
+              <label>Endereço completo para navegação</label>
+              <div class="endereco-row">
+                <input :value="enderecoCompleto" readonly class="endereco-input" />
+                <button class="btn btn-secondary btn-sm" @click="copiarEndereco" :disabled="!enderecoCompleto">
+                  {{ copiado ? '✓ Copiado' : '⧉ Copiar' }}
+                </button>
+              </div>
+
+              <!-- Linha 1: pela posição do pin no mapa -->
+              <div v-if="temCoords" class="nav-group">
+                <div class="nav-group-label">
+                  <span class="dot pin"></span> Pelo pin no mapa
+                  <span class="nav-coords">{{ numeroDoMapa || 's/ número' }} · {{ enderecoPin.split(',')[0] || 'endereço do pin' }}</span>
+                </div>
+                <div class="nav-links">
+                  <a :href="wazeUrl" target="_blank" rel="noopener" class="nav-link waze">Waze ↗</a>
+                  <a :href="mapsCoordUrl" target="_blank" rel="noopener" class="nav-link maps">Google Maps ↗</a>
+                  <a :href="osmUrl" target="_blank" rel="noopener" class="nav-link osm">OpenStreetMap ↗</a>
+                </div>
+              </div>
+
+              <!-- Linha 2: pelo endereço digitado (usa o número que o usuário informou) -->
+              <div v-if="enderecoCompleto" class="nav-group" :class="{ divergente: haDivergenciaNumero() }">
+                <div class="nav-group-label">
+                  <span class="dot texto"></span> Pelo endereço digitado
+                  <span class="nav-coords" v-if="haDivergenciaNumero()">({{ endAtivo.numero || 's/ número' }} · pode differ do pin)</span>
+                </div>
+                <div class="nav-links">
+                  <a :href="wazeTextoUrl" target="_blank" rel="noopener" class="nav-link waze">Waze ↗</a>
+                  <a :href="mapsTextoUrl" target="_blank" rel="noopener" class="nav-link maps">Google Maps ↗</a>
+                  <a :href="osmTextoUrl" target="_blank" rel="noopener" class="nav-link osm">OpenStreetMap ↗</a>
+                </div>
+              </div>
+
+              <p class="endereco-hint">
+                Copie e cole no app, ou clique num link. Os apps de navegação mostrarão o endereço por extenso.
+                <strong v-if="haDivergenciaNumero()" style="color:#b45309">Atenção: o número digitado ({{ endAtivo.numero }}) difere do pin ({{ numeroDoMapa }}) — escolha a opção desejada.</strong>
+              </p>
+            </div>
+          </div>
+
+          <!-- Contatos do endereço -->
+          <div class="contatos-section">
+            <div class="contatos-head">
+              <h3>📞 Contatos deste endereço</h3>
+              <button class="btn btn-secondary btn-sm" @click="adicionarContato" :disabled="somenteLeitura">+ Adicionar contato</button>
+            </div>
+            <p class="contatos-hint">Ex.: a loja 01 pode ter fulano, cicrano e beltrano como pessoas de contato.</p>
+            <div v-if="!endAtivo.contatos.length" class="placeholder-contatos">Nenhum contato para este endereço.</div>
+            <div v-for="(ct, j) in endAtivo.contatos" :key="j" class="contato-row">
+              <input v-model="ct.nome" placeholder="Nome do contato" class="contato-nome" />
+              <input :value="ct.telefone" @input="onContatoTelefoneInput(j, $event)" placeholder="(00) 0 0000-0000" class="contato-tel" />
+              <button class="btn btn-danger btn-sm" @click="removerContato(j)" title="Remover contato">×</button>
+            </div>
+          </div>
+        </template>
+
+        <!-- Fotos do local (nível cliente) -->
         <div class="fotos-section">
           <div class="fotos-head">
             <h3>📸 Fotos do local</h3>
@@ -193,7 +237,6 @@
             <span v-if="uploading" class="upload-msg">Enviando...</span>
           </div>
           <p v-if="fotoErro" class="msg erro">{{ fotoErro }}</p>
-          <!-- Galeria -->
           <div v-if="fotos.length" class="fotos-galeria">
             <div v-for="f in fotos" :key="f.id" class="foto-item">
               <img :src="f.url" :alt="`Foto ${f.id}`" loading="lazy" @click="abrirFoto(f.url)" />
@@ -277,12 +320,13 @@ const clienteId = ref('')
 const clienteBusca = ref('')
 
 const form = ref(null)
+const enderecos = ref([])
+const enderecoAtivo = ref(0)
 const salvando = ref(false)
 const msg = ref('')
 const msgTipo = ref('ok')
 
-// Número que o mapa "entendeu" para a posição atual do pin (vindo do reverse geocode).
-// Usado para detectar divergência quando o usuário digita um número diferente.
+// Número que o mapa "entendeu" para a posição atual do pin (endereço ativo).
 const numeroDoMapa = ref('')
 // Estado do modal de confirmação de divergência no salvar
 const modal = reactive({
@@ -311,16 +355,6 @@ const geo = reactive({ loading: false, erro: '' })
 const fotos = ref([])
 const uploading = ref(false)
 const fotoErro = ref('')
-
-// Mapeia nome de estado (Nominatim) -> sigla UF
-const UF_POR_NOME = {
-  'Acre':'AC','Alagoas':'AL','Amapá':'AP','Amazonas':'AM','Bahia':'BA','Ceará':'CE',
-  'Distrito Federal':'DF','Espírito Santo':'ES','Goiás':'GO','Maranhão':'MA',
-  'Mato Grosso':'MT','Mato Grosso do Sul':'MS','Minas Gerais':'MG','Pará':'PA',
-  'Paraíba':'PB','Paraná':'PR','Pernambuco':'PE','Piauí':'PI','Rio de Janeiro':'RJ',
-  'Rio Grande do Norte':'RN','Rio Grande do Sul':'RS','Rondônia':'RO','Roraima':'RR',
-  'Santa Catarina':'SC','São Paulo':'SP','Sergipe':'SE','Tocantins':'TO'
-}
 
 onMounted(async () => {
   try {
@@ -363,6 +397,76 @@ const clientesFiltrados = computed(() =>
   )
 )
 
+// Endereço ativo (objeto reativo)
+const endAtivo = computed(() => enderecos.value[enderecoAtivo.value] || null)
+
+const enderecoCompleto = computed(() => {
+  const f = endAtivo.value
+  if (!f) return ''
+  const partes = [
+    [f.rua, f.numero].filter(Boolean).join(', '),
+    f.bairro,
+    [f.cidade, f.estado].filter(Boolean).join(' - '),
+    f.cep
+  ].filter(Boolean)
+  return partes.join(', ') + (partes.length ? ', Brasil' : '')
+})
+
+const enderecoPin = computed(() => {
+  const f = endAtivo.value
+  if (!f) return ''
+  const num = numeroDoMapa.value || f.numero
+  const partes = [
+    [f.rua, num].filter(Boolean).join(', '),
+    f.bairro,
+    [f.cidade, f.estado].filter(Boolean).join(' - '),
+    f.cep
+  ].filter(Boolean)
+  return partes.join(', ') + (partes.length ? ', Brasil' : '')
+})
+
+const temCoords = computed(() => {
+  const f = endAtivo.value
+  return f && f.latitude != null && f.longitude != null
+})
+
+const wazeUrl = computed(() => {
+  const f = endAtivo.value
+  if (!f || !temCoords.value || !enderecoPin.value) return '#'
+  return `https://waze.com/ul?ll=${f.latitude},${f.longitude}&q=${encodeURIComponent(enderecoPin.value)}&navigate=yes`
+})
+
+const mapsCoordUrl = computed(() => {
+  const f = endAtivo.value
+  if (!f) return '#'
+  if (enderecoPin.value) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoPin.value)}`
+  if (temCoords.value) return `https://www.google.com/maps/search/?api=1&query=${f.latitude},${f.longitude}`
+  return '#'
+})
+
+const osmUrl = computed(() => {
+  const f = endAtivo.value
+  if (!f) return '#'
+  if (temCoords.value) return `https://www.openstreetmap.org/?mlat=${f.latitude}&mlon=${f.longitude}#map=17/${f.latitude}/${f.longitude}`
+  if (enderecoPin.value) return `https://www.openstreetmap.org/search?query=${encodeURIComponent(enderecoPin.value)}`
+  return '#'
+})
+
+const wazeTextoUrl = computed(() => {
+  if (!enderecoCompleto.value) return '#'
+  return `https://waze.com/ul?q=${encodeURIComponent(enderecoCompleto.value)}&navigate=yes`
+})
+
+const mapsTextoUrl = computed(() => {
+  if (!enderecoCompleto.value) return '#'
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto.value)}`
+})
+
+const osmTextoUrl = computed(() => {
+  if (!enderecoCompleto.value) return '#'
+  return `https://www.openstreetmap.org/search?query=${encodeURIComponent(enderecoCompleto.value)}`
+})
+
 function onEstadoChange() {
   if (cidadeSel.value && !cidadesDisponiveis.value.includes(cidadeSel.value)) {
     cidadeSel.value = ''
@@ -374,6 +478,7 @@ function limparSelecao() {
   if (clienteId.value) {
     clienteId.value = ''
     form.value = null
+    enderecos.value = []
     destruirMapa()
   }
 }
@@ -383,6 +488,7 @@ function onClienteSelecionado() {
   if (!nome) {
     clienteId.value = ''
     form.value = null
+    enderecos.value = []
     destruirMapa()
     return
   }
@@ -393,8 +499,34 @@ function onClienteSelecionado() {
   } else {
     clienteId.value = ''
     form.value = null
+    enderecos.value = []
     destruirMapa()
   }
+}
+
+function mascararTelefone(v) {
+  const digitos = (v || '').replace(/\D/g, '').slice(0, 11)
+  let out = ''
+  if (digitos.length > 0) out = '(' + digitos.slice(0, 2)
+  if (digitos.length >= 2) out += ') '
+  if (digitos.length > 2) {
+    const rest = digitos.slice(2)
+    if (rest.length > 9) {
+      out += rest.slice(0, 1) + ' ' + rest.slice(1, 5) + '-' + rest.slice(5, 9)
+    } else if (rest.length > 4) {
+      out += rest.slice(0, rest.length - 4) + '-' + rest.slice(rest.length - 4)
+    } else {
+      out += rest
+    }
+  }
+  return out
+}
+
+function onTelefoneInput(evt) {
+  form.value.telefone = mascararTelefone(evt.target.value)
+}
+function onContatoTelefoneInput(j, evt) {
+  endAtivo.value.contatos[j].telefone = mascararTelefone(evt.target.value)
 }
 
 async function carregarCliente() {
@@ -405,23 +537,41 @@ async function carregarCliente() {
       nome_razao_social: c.nome_razao_social ?? '',
       telefone: c.telefone ?? '',
       pessoa_contato: c.pessoa_contato ?? '',
-      cep: c.cep ?? '',
-      rua: c.rua ?? '',
-      numero: c.numero ?? '',
-      bairro: c.bairro ?? '',
-      cidade: c.cidade ?? '',
-      estado: (c.estado ?? '').toUpperCase(),
-      latitude: c.latitude ?? null,
-      longitude: c.longitude ?? null,
-      ponto_referencia: c.ponto_referencia ?? '',
-      observacao: c.observacao ?? '',
       status_endereco: c.status_endereco ?? 'aprovado',
       alterado_por_nome: c.alterado_por_nome ?? null,
       alterado_por_empresa: c.alterado_por_empresa ?? null,
       alterado_em: c.alterado_em ?? null
     }
-    // Assume que o número carregado é o que corresponde à posição atual do pin
-    numeroDoMapa.value = c.numero ?? ''
+
+    // Endereços do cliente (ou um vazio se não houver)
+    if (c.enderecos && c.enderecos.length) {
+      enderecos.value = c.enderecos.map(e => ({
+        nome: e.nome ?? '',
+        cep: e.cep ?? '',
+        rua: e.rua ?? '',
+        numero: e.numero ?? '',
+        bairro: e.bairro ?? '',
+        cidade: e.cidade ?? '',
+        estado: (e.estado ?? '').toUpperCase(),
+        latitude: e.latitude ?? null,
+        longitude: e.longitude ?? null,
+        ponto_referencia: e.ponto_referencia ?? '',
+        observacao: e.observacao ?? '',
+        contatos: (e.contatos || []).map(ct => ({ nome: ct.nome || '', telefone: ct.telefone || '' }))
+      }))
+    } else {
+      enderecos.value = [{
+        nome: '', cep: c.cep ?? '', rua: c.rua ?? '', numero: c.numero ?? '',
+        bairro: c.bairro ?? '', cidade: c.cidade ?? '', estado: (c.estado ?? '').toUpperCase(),
+        latitude: c.latitude ?? null, longitude: c.longitude ?? null,
+        ponto_referencia: c.ponto_referencia ?? '', observacao: c.observacao ?? '',
+        contatos: []
+      }]
+    }
+    enderecoAtivo.value = 0
+    // Assume que o número carregado corresponde à posição atual do pin
+    numeroDoMapa.value = endAtivo.value?.numero ?? ''
+
     // Fotos anexas (separadas do form — enviadas por endpoint proprio)
     fotos.value = (c.fotos || []).slice()
     fotoErro.value = ''
@@ -429,9 +579,9 @@ async function carregarCliente() {
     await nextTick()
     inicializarMapa()
 
-    // Auto-geocoding: se o cliente nao tem coords mas tem endereco,
-    // busca a coordenada e posiciona o pin (nao grava nada — so visual).
-    if ((c.latitude == null || c.longitude == null) && (c.rua || c.cidade || c.cep)) {
+    // Auto-geocoding: se o endereço ativo não tem coords mas tem endereço,
+    // busca a coordenada e posiciona o pin (não grava nada — só visual).
+    if (!endAtivo.value.latitude && !endAtivo.value.longitude && (endAtivo.value.rua || endAtivo.value.cidade || endAtivo.value.cep)) {
       msg.value = 'Buscando localização no mapa a partir do endereço...'
       msgTipo.value = 'ok'
       const r = await forwardGeocode()
@@ -449,15 +599,48 @@ async function carregarCliente() {
   }
 }
 
+function adicionarEndereco() {
+  enderecos.value.push({
+    nome: '', cep: '', rua: '', numero: '', bairro: '', cidade: '', estado: '',
+    latitude: null, longitude: null, ponto_referencia: '', observacao: '',
+    contatos: []
+  })
+  enderecoAtivo.value = enderecos.value.length - 1
+  nextTick(() => inicializarMapa())
+}
+function removerEndereco(i) {
+  if (enderecos.value.length <= 1) return
+  destruirMapa()
+  enderecos.value.splice(i, 1)
+  if (enderecoAtivo.value >= enderecos.value.length) {
+    enderecoAtivo.value = enderecos.value.length - 1
+  }
+  nextTick(() => inicializarMapa())
+}
+function adicionarContato() {
+  endAtivo.value.contatos.push({ nome: '', telefone: '' })
+}
+function removerContato(j) {
+  endAtivo.value.contatos.splice(j, 1)
+}
+
+function selecionarEndereco(i) {
+  if (i === enderecoAtivo.value) return
+  destruirMapa()
+  enderecoAtivo.value = i
+  numeroDoMapa.value = endAtivo.value?.numero ?? ''
+  nextTick(() => inicializarMapa())
+}
+
 function inicializarMapa() {
-  if (!mapaEl.value) return
+  if (!mapaEl.value || !endAtivo.value) return
   if (map) { map.remove(); map = null; marker = null }
 
-  const temCoords = form.value.latitude != null && form.value.longitude != null
-  const centro = temCoords
-    ? [Number(form.value.latitude), Number(form.value.longitude)]
+  const temC = endAtivo.value.latitude != null && endAtivo.value.longitude != null
+  const centro = temC
+    ? [Number(endAtivo.value.latitude), Number(endAtivo.value.longitude)]
     : [-15.7801, -47.9292] // centro do Brasil
-  const zoom = temCoords ? 16 : 4
+  const zoom = temC ? 16 : 4
 
   map = L.map('mapa-editar').setView(centro, zoom)
   L.tileLayer(tileUrl(), {
@@ -465,7 +648,7 @@ function inicializarMapa() {
     maxZoom: tileMaxZoom()
   }).addTo(map)
 
-  marker = temCoords
+  marker = temC
     ? L.marker(centro, { draggable: !somenteLeitura.value }).addTo(map)
     : L.marker(centro, { draggable: !somenteLeitura.value, opacity: 0 }).addTo(map)
 
@@ -484,9 +667,9 @@ function destruirMapa() {
 onBeforeUnmount(destruirMapa)
 
 function setarCoordenadas(lat, lng) {
-  if (!form.value) return
-  form.value.latitude = Number(lat.toFixed(8))
-  form.value.longitude = Number(lng.toFixed(8))
+  if (!endAtivo.value) return
+  endAtivo.value.latitude = Number(lat.toFixed(8))
+  endAtivo.value.longitude = Number(lng.toFixed(8))
 }
 
 function pegarLocalizacao() {
@@ -527,25 +710,25 @@ function pegarLocalizacao() {
 
 // Reverse geocoding via Nominatim (OpenStreetMap) — gratuito, sem chave de API
 async function reverseGeocode(lat, lng) {
+  if (!endAtivo.value) return
   // Limpa o numero IMEDIATAMENTE (antes do fetch) — garante consistencia
-  // mesmo se o geocoder rate-limitar, timeout ou falhar a rede.
-  form.value.numero = ''
+  endAtivo.value.numero = ''
   numeroDoMapa.value = ''
 
   clearTimeout(geocodingTimeout)
   geocodingTimeout = setTimeout(async () => {
     try {
       const a = await reverseGeocodeExternal(lat, lng)
-      if (!a) return
-      if (a.cep) form.value.cep = a.cep
-      if (a.rua) form.value.rua = a.rua
+      if (!a || !endAtivo.value) return
+      if (a.cep) endAtivo.value.cep = a.cep
+      if (a.rua) endAtivo.value.rua = a.rua
       if (a.numero) {
-        form.value.numero = a.numero
+        endAtivo.value.numero = a.numero
         numeroDoMapa.value = a.numero
       }
-      if (a.bairro) form.value.bairro = a.bairro
-      if (a.cidade) form.value.cidade = a.cidade
-      if (a.estado) form.value.estado = a.estado
+      if (a.bairro) endAtivo.value.bairro = a.bairro
+      if (a.cidade) endAtivo.value.cidade = a.cidade
+      if (a.estado) endAtivo.value.estado = a.estado
     } catch {
       // ignora erro de rede
     }
@@ -570,85 +753,11 @@ function nomeComEmpresa(nome, empresa) {
   return e ? `${n} (${e})` : n
 }
 
-// Endereço completo montado a partir dos campos do formulário (reativo)
-const enderecoCompleto = computed(() => {
-  const f = form.value
-  if (!f) return ''
-  const partes = [
-    [f.rua, f.numero].filter(Boolean).join(', '),
-    f.bairro,
-    [f.cidade, f.estado].filter(Boolean).join(' - '),
-    f.cep
-  ].filter(Boolean)
-  return partes.join(', ') + (partes.length ? ', Brasil' : '')
-})
-
-// Endereço que o mapa "resolveu" para a posição atual do pin. Usa o numeroDoMapa
-// (que pode divergir do digitado) para que o link reflita a posição física exata.
-const enderecoPin = computed(() => {
-  const f = form.value
-  if (!f) return ''
-  const num = numeroDoMapa.value || f.numero
-  const partes = [
-    [f.rua, num].filter(Boolean).join(', '),
-    f.bairro,
-    [f.cidade, f.estado].filter(Boolean).join(' - '),
-    f.cep
-  ].filter(Boolean)
-  return partes.join(', ') + (partes.length ? ', Brasil' : '')
-})
-
-const temCoords = computed(() =>
-  form.value && form.value.latitude != null && form.value.longitude != null
-)
-
-// Links "pelo pin no mapa": usam a coordenada exata (precisão) mas passam o endereço
-// como query textual para o app exibir o nome da rua em vez de só lat/lng.
-const wazeUrl = computed(() => {
-  const f = form.value
-  if (!f || !temCoords.value || !enderecoPin.value) return '#'
-  return `https://waze.com/ul?ll=${f.latitude},${f.longitude}&q=${encodeURIComponent(enderecoPin.value)}&navigate=yes`
-})
-
-const mapsCoordUrl = computed(() => {
-  const f = form.value
-  if (!f) return '#'
-  // Maps aceita query textual — usa o endereço do pin (mostra endereço, não coords cruas)
-  if (enderecoPin.value) return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoPin.value)}`
-  if (temCoords.value) return `https://www.google.com/maps/search/?api=1&query=${f.latitude},${f.longitude}`
-  return '#'
-})
-
-const osmUrl = computed(() => {
-  const f = form.value
-  if (!f) return '#'
-  if (temCoords.value) return `https://www.openstreetmap.org/?mlat=${f.latitude}&mlon=${f.longitude}#map=17/${f.latitude}/${f.longitude}`
-  if (enderecoPin.value) return `https://www.openstreetmap.org/search?query=${encodeURIComponent(enderecoPin.value)}`
-  return '#'
-})
-
-// URLs pelo endereço digitado (texto) — usam o número informado, não o do pin
-const wazeTextoUrl = computed(() => {
-  if (!enderecoCompleto.value) return '#'
-  return `https://waze.com/ul?q=${encodeURIComponent(enderecoCompleto.value)}&navigate=yes`
-})
-
-const mapsTextoUrl = computed(() => {
-  if (!enderecoCompleto.value) return '#'
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoCompleto.value)}`
-})
-
-const osmTextoUrl = computed(() => {
-  if (!enderecoCompleto.value) return '#'
-  return `https://www.openstreetmap.org/search?query=${encodeURIComponent(enderecoCompleto.value)}`
-})
-
 async function copiarEndereco() {
   if (!enderecoCompleto.value) return
   try {
     await navigator.clipboard.writeText(enderecoCompleto.value)
   } catch {
-    // fallback para navegadores sem clipboard API
     const ta = document.createElement('textarea')
     ta.value = enderecoCompleto.value
     document.body.appendChild(ta)
@@ -661,31 +770,10 @@ async function copiarEndereco() {
   copiarTimeout = setTimeout(() => { copiado.value = false }, 2000)
 }
 
-// Máscara de telefone (XX) 9 9999-9999
-function onTelefoneInput(evt) {
-  const digitos = (evt.target.value || '').replace(/\D/g, '').slice(0, 11)
-  let out = ''
-  if (digitos.length > 0) out = '(' + digitos.slice(0, 2)
-  if (digitos.length >= 2) out += ') '
-  if (digitos.length > 2) {
-    // 9 obrigatório nowadays em BR; se houver 11 dígitos, formato com 9 extra
-    const rest = digitos.slice(2)
-    // Se 9 dígitos: 9 9999-9999 (1+4-4); se 8: 9999-9999
-    if (rest.length > 9) {
-      out += rest.slice(0, 1) + ' ' + rest.slice(1, 5) + '-' + rest.slice(5, 9)
-    } else if (rest.length > 4) {
-      out += rest.slice(0, rest.length - 4) + '-' + rest.slice(rest.length - 4)
-    } else {
-      out += rest
-    }
-  }
-  form.value.telefone = out
-}
-
 // Forward geocoding (OpenCage em produção, Nominatim no fallback dev) —
 // reposiciona o pin a partir do endereço digitado
 async function forwardGeocode() {
-  const f = form.value
+  const f = endAtivo.value
   if (!f) return null
   const partes = [f.numero, f.rua, f.bairro, f.cidade, f.estado, 'Brasil'].filter(Boolean)
   if (partes.length < 2) return null
@@ -699,7 +787,6 @@ async function forwardGeocode() {
       marker.setOpacity(1)
     }
     if (map) map.setView([r.lat, r.lng], 17)
-    // Atualiza o "número do mapa" para o digitado (agora consistente)
     numeroDoMapa.value = f.numero
     return { lat: r.lat, lng: r.lng }
   } catch {
@@ -709,11 +796,10 @@ async function forwardGeocode() {
 
 // Verifica divergência entre o número digitado e a posição física do pin
 function haDivergenciaNumero() {
-  const f = form.value
+  const f = endAtivo.value
   if (!f) return false
   const digitado = (f.numero || '').trim()
   const doMapa = (numeroDoMapa.value || '').trim()
-  // Só sinaliza divergência quando há número digitado E ele difere do mapa
   if (!digitado) return false
   if (!doMapa) return false
   return digitado !== doMapa
@@ -722,9 +808,9 @@ function haDivergenciaNumero() {
 function abrirModalDivergencia() {
   return new Promise((resolve) => {
     modal.numeroMapa = numeroDoMapa.value
-    modal.numeroDigitado = (form.value.numero || '').trim()
-    modal.latitudeMapa = form.value.latitude
-    modal.longitudeMapa = form.value.longitude
+    modal.numeroDigitado = (endAtivo.value.numero || '').trim()
+    modal.latitudeMapa = endAtivo.value.latitude
+    modal.longitudeMapa = endAtivo.value.longitude
     modal.erroRepos = ''
     modal.resolve = resolve
     modal.aberto = true
@@ -805,9 +891,22 @@ async function salvar() {
   try {
     const payload = {
       ...form.value,
-      estado: (form.value.estado || '').toUpperCase(),
-      latitude: form.value.latitude === '' ? null : form.value.latitude,
-      longitude: form.value.longitude === '' ? null : form.value.longitude
+      enderecos: enderecos.value.map(e => ({
+        nome: e.nome || null,
+        cep: e.cep || null,
+        rua: e.rua || null,
+        numero: e.numero || null,
+        bairro: e.bairro || null,
+        cidade: e.cidade || null,
+        estado: (e.estado || '').toUpperCase() || null,
+        latitude: e.latitude === '' ? null : e.latitude,
+        longitude: e.longitude === '' ? null : e.longitude,
+        ponto_referencia: e.ponto_referencia || null,
+        observacao: e.observacao || null,
+        contatos: (e.contatos || [])
+          .filter(c => (c.nome || '').trim())
+          .map(c => ({ nome: c.nome.trim(), telefone: c.telefone || null }))
+      }))
     }
     // Remove campos que sao apenas apresentacao (_backend controla por perms)
     delete payload.status_endereco
@@ -845,18 +944,46 @@ async function salvar() {
 
 .field { margin-bottom: 0.8rem; }
 .field label { display: block; font-size: 0.78rem; font-weight: 600; color: #475569; margin-bottom: 0.3rem; }
-.field input, .field select {
+.field input, .field select, .field textarea {
   width: 100%; padding: 0.55rem 0.7rem;
   border: 1px solid #dbe2ee; border-radius: 8px;
   font-size: 0.92rem; outline: none; background: #fff; transition: all 0.15s;
+  box-sizing: border-box; font-family: inherit;
 }
-.field input:focus, .field select:focus { border-color: #1f5bf0; box-shadow: 0 0 0 4px rgba(31,91,240,0.12); }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: #1f5bf0; box-shadow: 0 0 0 4px rgba(31,91,240,0.12); }
+.field textarea { resize: vertical; min-height: 50px; }
 .uf { text-transform: uppercase; }
 
 .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.4rem 0.9rem; }
 .col2 { grid-column: span 2; }
 .full { grid-column: 1 / -1; }
 @media (max-width: 720px) { .form-grid { grid-template-columns: 1fr; } .col2 { grid-column: auto; } }
+
+/* Abas de endereço */
+.endereco-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 1rem 0 0.9rem; padding-bottom: 0.8rem; border-bottom: 1px solid #eef2f8; }
+.tab-end {
+  padding: 0.45rem 0.9rem; border-radius: 9px; cursor: pointer;
+  background: #fff; border: 1px solid #dbe2ee; color: #475569;
+  font-size: 0.82rem; font-weight: 600; transition: all 0.15s;
+}
+.tab-end:hover { background: #eef6ff; border-color: #1f5bf0; color: #1f5bf0; }
+.tab-end.active { background: #1f5bf0; color: #fff; border-color: #1f5bf0; }
+.tab-add {
+  padding: 0.45rem 0.9rem; border-radius: 9px; cursor: pointer;
+  background: #eef6ff; border: 1px dashed #1f5bf0; color: #1746dc;
+  font-size: 0.82rem; font-weight: 600; transition: all 0.15s;
+}
+.tab-add:hover { background: #dbeafe; }
+.tab-add:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.endereco-ativo-head { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
+.endereco-ativo-head h3 { font-size: 1rem; font-weight: 700; color: #1d2a4d; }
+.endereco-ativo-acoes { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.apelido-input {
+  padding: 0.45rem 0.7rem; border: 1px solid #dbe2ee; border-radius: 8px;
+  font-size: 0.88rem; outline: none; background: #fff; width: 220px;
+}
+.apelido-input:focus { border-color: #1f5bf0; box-shadow: 0 0 0 3px rgba(31,91,240,0.12); }
 
 .geo-section { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #eef2f8; }
 .geo-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
@@ -925,7 +1052,6 @@ async function salvar() {
   from { opacity: 0; transform: translateY(8px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
-/* Mobile: botões em coluna, card ocupa a largura disponível com scroll */
 @media (max-width: 540px) {
   .modal-overlay { padding: 0.5rem; }
   .modal-card { padding: 1rem; border-radius: 14px; }
@@ -973,6 +1099,22 @@ async function salvar() {
 
 .endereco-hint { font-size: 0.72rem; color: #94a3b8; margin-top: 0.6rem; line-height: 1.4; }
 
+/* Contatos */
+.contatos-section { margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid #eef2f8; }
+.contatos-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+.contatos-head h3 { font-size: 1rem; font-weight: 700; color: #1d2a4d; }
+.contatos-hint { font-size: 0.78rem; color: #94a3b8; margin: 0.15rem 0 0.6rem; }
+.placeholder-contatos { font-size: 0.82rem; color: #94a3b8; font-style: italic; margin-top: 0.4rem; }
+.contato-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.45rem; flex-wrap: wrap; }
+.contato-nome { flex: 1; min-width: 160px; }
+.contato-tel { width: 190px; }
+.contato-row input {
+  padding: 0.5rem 0.7rem; border: 1px solid #dbe2ee; border-radius: 8px;
+  font-size: 0.9rem; outline: none; background: #fff; box-sizing: border-box;
+}
+.contato-row input:focus { border-color: #1f5bf0; box-shadow: 0 0 0 3px rgba(31,91,240,0.12); }
+@media (max-width: 600px) { .contato-tel { width: 100%; } }
+
 /* Fotos do local */
 .fotos-section { margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid #eef2f8; }
 .fotos-head h3 { font-size: 1rem; font-weight: 700; color: #1d2a4d; }
@@ -1017,15 +1159,6 @@ async function salvar() {
 .foto-del:hover { background: #dc2626; }
 .foto-del:disabled { opacity: 0.5; cursor: not-allowed; }
 
-textarea {
-  width: 100%; padding: 0.55rem 0.7rem;
-  border: 1px solid #dbe2ee; border-radius: 8px;
-  font-size: 0.9rem; outline: none; background: #fff;
-  resize: vertical; min-height: 60px; font-family: inherit;
-  transition: all 0.15s; box-sizing: border-box;
-}
-textarea:focus { border-color: #1f5bf0; box-shadow: 0 0 0 4px rgba(31,91,240,0.12); }
-
 .acoes { display: flex; align-items: center; gap: 1rem; margin-top: 1.1rem; flex-wrap: wrap; }
 .msg { font-size: 0.85rem; }
 .msg.ok { color: #15803d; }
@@ -1034,6 +1167,7 @@ textarea:focus { border-color: #1f5bf0; box-shadow: 0 0 0 4px rgba(31,91,240,0.1
 .btn { padding: 0.6rem 1rem; border-radius: 9px; cursor: pointer; font-weight: 600; font-size: 0.88rem; border: none; }
 .btn-primary { background: linear-gradient(135deg, #3479fb, #1746dc); color: #fff; box-shadow: 0 10px 20px -8px rgba(23,70,220,0.7); }
 .btn-secondary { background: #eef6ff; color: #1746dc; border: 1px solid #bcdcff; }
+.btn-danger { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-secondary:disabled { opacity: 0.6; cursor: not-allowed; }
 
