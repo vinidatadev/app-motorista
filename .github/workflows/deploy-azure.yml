@@ -1,0 +1,84 @@
+# Deploy em Azure Container Apps (producao real).
+# Roda manualmente (workflow_dispatch) ou ao criar uma tag vX.Y.Z.
+#
+# O provisionamento da infraestrutura e feito UMA VEZ pelo script
+# scripts/azure-setup.sh (rode no Azure Cloud Shell). Este workflow
+# apenas builda as imagens, publica no ACR e ATUALIZA o app do BACKEND.
+#
+# FRONTEND: no modo gratuito recomendado, o frontend e servido pelo
+# Azure Static Web Apps (US$ 0). Ao conectar o repositorio no portal do
+# Static Web Apps, o proprio Azure cria/gerencia o workflow de deploy do
+# frontend (nao use este workflow para o frontend nesse modo).
+#
+# Secrets/Vars necessarias no GitHub (Settings > Secrets and variables > Actions):
+#   AZURE_RESOURCE_GROUP        (VAR)   nome do Resource Group (ex.: app-motorista-rg)
+#   AZURE_CREDENTIALS           (secret) JSON do service principal (gerado pelo setup.sh)
+#   ACR_NAME                    (secret) ex.: appmotoristaacr (sem .azurecr.io)
+#   ACR_USERNAME                (secret) nome do ACR (admin habilitado pelo setup.sh)
+#   ACR_PASSWORD                (secret) senha admin do ACR (impressa pelo setup.sh)
+#   VITE_API_URL                (secret) ex.: https://app-motorista-backend.<hash>.eastus2.azurecontainerapps.io
+#   VITE_MAPBOX_TOKEN           (secret) token Mapbox (publico no bundle)
+#   VITE_OPENCAGE_KEY           (secret) chave OpenCage
+#   CSP_API_URL                 (secret) = VITE_API_URL
+#   CSP_WS_URL                  (secret) = wss:// + mesmo host do VITE_API_URL
+#   CSP_IMG_SRC                 (secret) ex.: https://SUA_CONTA.blob.core.windows.net
+#
+# Os env vars do backend (DATABASE_URL, MINIO_*, JWT_SECRET...) sao definidos
+# no proprio Container App pelo setup.sh — NAO ficam neste workflow.
+
+name: Deploy Azure Container Apps
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+env:
+  REGISTRY: ${{ secrets.ACR_NAME }}.azurecr.io
+  BACKEND_IMAGE: ${{ secrets.ACR_NAME }}.azurecr.io/app-motorista-backend
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:latest
+            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy backend Container App
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          containerAppName: app-motorista-backend
+          resourceGroup: ${{ vars.AZURE_RESOURCE_GROUP }}
+          imageToDeploy: ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+          registryUsername: ${{ secrets.ACR_USERNAME }}
+          registryPassword: ${{ secrets.ACR_PASSWORD }}

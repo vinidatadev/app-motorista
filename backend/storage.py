@@ -26,10 +26,19 @@ def _warn_default_creds():
 
 _warn_default_creds()
 
+def _endpoint_url() -> str:
+    """Normaliza MINIO_ENDPOINT aceitando ou não o scheme.
+
+    - "minio:9000"  -> http://minio:9000   (padrão Docker interno)
+    - "https://acct.blob.core.windows.net" -> mantém (Azure Blob exige HTTPS)
+    """
+    return ENDPOINT if "://" in ENDPOINT else f"http://{ENDPOINT}"
+
+
 def _client():
     return boto3.client(
         "s3",
-        endpoint_url=f"http://{ENDPOINT}",
+        endpoint_url=_endpoint_url(),
         aws_access_key_id=ACCESS_KEY,
         aws_secret_access_key=SECRET_KEY,
         region_name="us-east-1",

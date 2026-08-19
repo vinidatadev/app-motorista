@@ -24,4 +24,13 @@ COPY --from=build /app/dist /usr/share/nginx/html
 ARG NGINX_CONF=nginx.conf
 COPY ${NGINX_CONF} /etc/nginx/conf.d/default.conf
 
+# CSP montada em tempo de build a partir dos placeholders __CSP_*__ da conf.
+# Defaults = valores anteriores (backend.devlopplay.site / localhost:9000),
+# entao builds sem esses args continuam funcionando como antes.
+ARG CSP_API_URL=https://backend.devlopplay.site
+ARG CSP_WS_URL=wss://backend.devlopplay.site
+ARG CSP_IMG_SRC=http://localhost:9000
+# (delimitador "|" evita conflito com "/" das URLs; URLs nao usam "|")
+RUN sed -i "s|__CSP_API_URL__|${CSP_API_URL}|g; s|__CSP_WS_URL__|${CSP_WS_URL}|g; s|__CSP_IMG_SRC__|${CSP_IMG_SRC}|g" /etc/nginx/conf.d/default.conf
+
 EXPOSE 80

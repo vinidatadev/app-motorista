@@ -1,0 +1,67 @@
+# Producao: NADA e buildado aqui. As imagens vem do Docker Hub (geradas pelo
+# GitHub Actions). Uso na VPS/instancia:
+#   cp .env.example .env            # (se ainda nao existir) e preencha as vars
+#   cp backend/.env.example backend/.env   # aponte para os servicos internos
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Para atualizar: docker compose -f docker-compose.prod.yml pull && up -d
+# (troque IMAGE_TAG=sha-xxxx para pinar uma versao especifica do pipeline)
+
+services:
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-minioadmin}
+    # Em producao o MinIO nao e exposto publicamente: as fotos sao acessadas
+    # via presigned URLs geradas pelo backend (MINIO_PUBLIC_URL).
+    expose:
+      - "9000"
+    volumes:
+      - minio_data:/data
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-admin}
+      POSTGRES_DB: ${DB_NAME:-appdb}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-admin} -d ${DB_NAME:-appdb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ${BACKEND_IMAGE:-vinidatadev/app-motorista-backend}:${IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      OPENCAGE_KEY: ${OPENCAGE_KEY:-}
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-vinidatadev/app-motorista-frontend}:${IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  pg_data:
+  minio_data:

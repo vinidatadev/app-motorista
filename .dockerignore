@@ -1,0 +1,24 @@
+node_modules
+dist
+dist-ssr
+
+# Segredos — nunca entram na imagem
+.env
+.env.*
+!.env.example
+
+# Nao necessario para o build do frontend
+backend
+docs
+.git
+.github
+*.log
+clientes.xlsx
+comando_auxiliares.txt
+.vscode
+.idea
+
+# Compose e Dockerfiles nao sao copiados pro contexto
+docker-compose*.yml
+Dockerfile
+nginx.local.conf
