@@ -47,7 +47,11 @@
 # VARIAVEIS — edite ANTES de rodar (valores entre aspas):
 # ----------------------------------------------------------------------------
 RESOURCE_GROUP="app-motorista-rg"
-LOCATION="eastus2"                     # regiao (evite brasilsouth: menos recursos free)
+# Regiao. Se o PostgreSQL der "location restricted", troque para outra com
+# mais disponibilidade. Opcoes com tier gratuito do Flexible Server:
+#   eastus2 | centralus | westus2 | eastus | southcentralus | canadacentral
+# (Nao use brasilsouth: tem menos recursos no tier gratuito.)
+LOCATION="eastus"
 ACR_NAME="appmotoristaacr"             # globalmente unico: minusculas, sem hifen
 STORAGE_ACCOUNT="appmotoristastg"      # globalmente unico: minusculas
 POSTGRES_SERVER="app-motorista-pg"     # globalmente unico
@@ -88,8 +92,19 @@ az storage account create --resource-group "$RESOURCE_GROUP" --name "$STORAGE_AC
     --location "$LOCATION" --sku Standard_LRS --kind StorageV2 \
     --min-tls-version TLS1_2 -o none
 az storage account update --resource-group "$RESOURCE_GROUP" --name "$STORAGE_ACCOUNT" \
-    --enable-hierarchical-namespace false --enable-s3-protocol true -o none \
-    || echo "    AVISO: nao consegui habilitar S3 por CLI. Habilite no portal (Settings > Properties > Allow S3 protocol)."
+    --enable-hierarchical-namespace false -o none 2>/dev/null || true
+# Protocolo S3: tenta habilitar por CLI; se a versao nao suportar a flag, orienta no portal.
+if ! az storage account show --resource-group "$RESOURCE_GROUP" --name "$STORAGE_ACCOUNT" \
+        --query "properties.isSkuConversionBlocked" -o tsv >/dev/null 2>&1; then :; fi
+if az storage account update --resource-group "$RESOURCE_GROUP" --name "$STORAGE_ACCOUNT" \
+        --enable-s3-protocol true -o none 2>/dev/null; then
+    echo "    S3 protocol habilitado por CLI."
+else
+    echo "    ATENCAO: nao consegui habilitar o protocolo S3 por CLI."
+    echo "    Faca manualmente no portal:"
+    echo "      Storage account '$STORAGE_ACCOUNT' > Settings > Properties >"
+    echo "      'Allow S3 protocol' = Enabled > Save"
+fi
 STORAGE_KEY=$(az storage account keys list --account-name "$STORAGE_ACCOUNT" \
     --resource-group "$RESOURCE_GROUP" --query "[0].value" -o tsv)
 az storage container create --account-name "$STORAGE_ACCOUNT" \
@@ -98,26 +113,47 @@ echo "    Storage OK. Endpoint S3: https://$STORAGE_ACCOUNT.blob.core.windows.ne
 
 # ---------- 5. PostgreSQL Flexible Server (TIER GRATUITO 12 meses) ----------
 echo "==> Criando PostgreSQL Flexible Server (TIER GRATUITO, 12 meses)..."
-# O tier gratuito so existe em determinadas regioes (eastus2 esta entre elas).
-# Se falhar, crie como Burstable B1ms (pago, ~US$ 25-35/mes) e troque no portal depois.
-if az postgres flexible-server create \
-    --resource-group "$RESOURCE_GROUP" \
-    --name "$POSTGRES_SERVER" \
-    --location "$LOCATION" \
-    --admin-user "$POSTGRES_USER" \
-    --admin-password "$POSTGRES_PASSWORD" \
-    --tier Burstable --sku-name Standard_B1ms --storage-size 32 --storage-auto-grow enabled \
-    --version 16 --public-access All --yes -o none; then
-    echo "    AVISO: criado como B1ms (pago). Troque para o TIER GRATUITO no portal"
-else
-    echo "    (se apareceu erro de tier gratuito, o B1ms acima ja cobre)"
+# O tier gratuito so existe em determinadas regioes. Tenta criar; se a regiao
+# estiver restrita, tenta automaticamente outras regioes da lista.
+POSTGRES_CREATED=""
+for try_loc in "$LOCATION" westus2 centralus eastus2 southcentralus canadacentral; do
+    echo "    Tentando criar PostgreSQL em $try_loc ..."
+    if az postgres flexible-server create \
+        --resource-group "$RESOURCE_GROUP" \
+        --name "$POSTGRES_SERVER" \
+        --location "$try_loc" \
+        --admin-user "$POSTGRES_USER" \
+        --admin-password "$POSTGRES_PASSWORD" \
+        --tier Burstable --sku-name Standard_B1ms --storage-size 32 --storage-auto-grow enabled \
+        --version 16 --public-access All --yes -o none 2>/dev/null; then
+        POSTGRES_CREATED="yes"
+        echo "    PostgreSQL criado em $try_loc."
+        break
+    else
+        echo "    Falhou em $try_loc (restrito ou indisponivel). Tentando proxima..."
+    fi
+done
+
+if [ -z "$POSTGRES_CREATED" ]; then
+    echo ""
+    echo "ERRO: nao consegui criar o PostgreSQL em nenhuma regiao testada."
+    echo "Isso pode ser limite de cota da sua conta Free. Opcoes:"
+    echo "  1. Crie o PostgreSQL manualmente no portal (qualquer regiao que aceite) e reexecute"
+    echo "     o script com a variavel POSTGRES_SERVER apontando para o servidor existente."
+    echo "  2. Aumente a cota em: https://portal.azure.com -> Ajuda e suporte -> Nova solicitação de suporte."
+    echo ""
+    echo "Os recursos criados ate aqui (ACR, Storage) permanecem. Para remover tudo:"
+    echo "  az group delete --name $RESOURCE_GROUP --yes --no-wait"
+    exit 1
 fi
-# Tenta ativar o tier gratuito (ignora erro se a regiao nao suportar)
+
+# Tenta aplicar o tier gratuito (ignora erro se a regiao nao suportar)
 az postgres flexible-server update --resource-group "$RESOURCE_GROUP" \
     --name "$POSTGRES_SERVER" --tier Burstable --sku-name Standard_B1ms \
     --high-availability Disabled -o none 2>/dev/null || true
-echo "    PostgreSQL OK. Host: $POSTGRES_SERVER.postgres.database.azure.com"
 echo "    DICA: no portal (Overview do servidor) voce pode aplicar o TIER GRATUITO (12 meses)."
+
+echo "==> Criando database $POSTGRES_DB no PostgreSQL..."
 az postgres flexible-server db create \
     --resource-group "$RESOURCE_GROUP" --server-name "$POSTGRES_SERVER" \
     --database-name "$POSTGRES_DB" -o none
