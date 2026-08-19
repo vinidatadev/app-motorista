@@ -35,6 +35,23 @@ def _client():
         region_name="us-east-1",
     )
 
+def _public_client():
+    """Cliente S3 apontando para a URL PÚBLICA do MinIO.
+
+    As presigned URLs precisam ser assinadas com o mesmo host que o navegador
+    vai acessar (MINIO_PUBLIC_URL), e não com o hostname interno do Docker
+    (minio:9000) — senão a imagem não carrega nem passa no CSP.
+    """
+    scheme = "https" if PUBLIC_URL.startswith("https") else "http"
+    host = PUBLIC_URL.replace("http://", "").replace("https://", "").rstrip("/")
+    return boto3.client(
+        "s3",
+        endpoint_url=f"{scheme}://{host}",
+        aws_access_key_id=ACCESS_KEY,
+        aws_secret_access_key=SECRET_KEY,
+        region_name="us-east-1",
+    )
+
 def _ensure_one(s3, name: str):
     """Cria um bucket (privado). Acesso só via presigned URLs geradas pela API."""
     try:
@@ -69,9 +86,11 @@ def presign_url(key: str, bucket: str | None = None, expires: int = 3600) -> str
 
     O bucket é privado; apenas quem recebe esta URL (expira após `expires` s)
     consegue baixar o arquivo. Não exige rede — a assinatura é calculada localmente.
+
+    A URL é assinada contra MINIO_PUBLIC_URL (host acessível pelo navegador).
     """
     b = bucket or CLIENTES_BUCKET
-    s3 = _client()
+    s3 = _public_client()
     return s3.generate_presigned_url(
         "get_object",
         Params={"Bucket": b, "Key": key},

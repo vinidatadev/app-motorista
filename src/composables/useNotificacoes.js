@@ -9,6 +9,7 @@ let socket = null
 let desconectar = false
 let reconectarTimeout = null
 let tentativa = 0
+let pollTimer = null
 
 export const naoLidas = computed(() =>
   notificacoes.value.filter(n => !n.lida).length
@@ -161,11 +162,17 @@ async function marcarTodasLidas() {
 export function iniciarNotificacoes() {
   carregar()
   conectar()
+  // Rede de segurança: mesmo se o WebSocket cair (ou o push falhar), o sino
+  // continua sincronizado com um refresh periódico.
+  clearInterval(pollTimer)
+  pollTimer = setInterval(carregar, 45000)
 }
 
 // Desliga WS e limpa estado (chamado no logout)
 export function pararNotificacoes() {
   parar()
+  clearInterval(pollTimer)
+  pollTimer = null
   notificacoes.value = []
 }
 

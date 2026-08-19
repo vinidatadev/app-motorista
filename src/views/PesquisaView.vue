@@ -227,7 +227,7 @@
 
 <script setup>
 import { ref, computed, reactive, onMounted, watch, nextTick, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import L from 'leaflet'
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
@@ -244,6 +244,7 @@ L.Icon.Default.mergeOptions({
 })
 
 const router = useRouter()
+const route = useRoute()
 
 // Permissoes (computadas pra reatividade ao login)
 const podeEditar = computed(() => temPermissao('editar'))
@@ -346,10 +347,32 @@ onMounted(async () => {
     ])
     todos.value = clientes
     estados.value = ufs
+    selecionarPorQuery()
   } finally {
     carregando.value = false
   }
 })
+
+// Seleciona um cliente vindo via URL (ex.: /clientes/pesquisa?cliente=ID ou ?codigo=C100),
+// usado quando o motorista clica na notificação de solicitação concluída.
+function selecionarPorQuery() {
+  const id = route.query.cliente
+  const cod = route.query.codigo
+  const alvo = id
+    ? todos.value.find(c => c.id === id)
+    : cod
+      ? todos.value.find(c => c.codigo === cod)
+      : null
+  if (!alvo) return
+  estadoSel.value = alvo.estado || ''
+  cidadeSel.value = alvo.cidade || ''
+  clienteBusca.value = alvo.nome_razao_social
+  clienteSelecionado.value = alvo
+}
+
+// Se o usuário já está na página e a URL muda (ex.: clicou em outra notificação)
+watch(() => route.query.cliente, () => { if (todos.value.length) selecionarPorQuery() })
+watch(() => route.query.codigo, () => { if (todos.value.length) selecionarPorQuery() })
 
 const cidades = computed(() => {
   const src = estadoSel.value

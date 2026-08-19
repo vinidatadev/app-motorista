@@ -7,7 +7,7 @@ SPA em Vue 3 (Composition API) com Vue Router, Tailwind CSS e Leaflet para mapas
 ## Bootstrap e estrutura
 
 - `src/main.js` — cria o app, instala o router e monta em `#app`.
-- `src/App.vue` — layout global: navbar com links condicionados a permissões, badge de empresa, avatar, botão sair e rodapé com a versão (`__APP_VERSION__` injetada pelo Vite).
+- `src/App.vue` — layout global: navbar com links condicionados a permissões, **sino de notificações** (badge, dropdown, som e navegação ao clicar), badge de empresa, avatar, botão sair e rodapé com a versão (`__APP_VERSION__` injetada pelo Vite).
 - `src/style.css` — importa Leaflet CSS, Tailwind base/components/utilities e corrige o caminho do ícone padrão do Leaflet.
 - `public/icon.svg` — ícone usado no `index.html` e no manifesto do PWA.
 
@@ -22,6 +22,7 @@ SPA em Vue 3 (Composition API) com Vue Router, Tailwind CSS e Leaflet para mapas
 | `/clientes/cadastrar` | cadastrar | `criar` |
 | `/clientes/carga` | carga | `carga` |
 | `/aprovacoes` | aprovacoes | `aprovar` |
+| `/solicitacoes` | solicitacoes | autenticado (time vê todas; demais veem as suas) |
 | `/admin/usuarios` | usuarios | admin |
 | `/sem-acesso` | sem-acesso | pública |
 
@@ -46,6 +47,8 @@ SPA em Vue 3 (Composition API) com Vue Router, Tailwind CSS e Leaflet para mapas
   - `api.locais` — `estados`, `cidades`
   - `api.clientes` — `listar`, `obter`, `criar`, `atualizar`, `remover`, `uploadFoto` (FormData), `deletarFoto`, `alteracoes.{listar,aprovar,recusar,editar,historico}`, `exportar` (blob), `previewCarga`, `aplicarCarga`
   - `api.users` — `listar`, `criar`, `atualizar`, `remover`
+  - `api.notificacoes` — `listar`, `marcarLida`, `marcarTodasLidas`
+  - `api.solicitacoes` — `listar`, `criar`, `status`
 
 ## Composables
 
@@ -65,6 +68,15 @@ Estado reativo global da sessão:
 - `forwardGeocode(query)` — OpenCage/Nominatim. Retorna `{ lat, lng }`.
 - `UF_POR_NOME` — mapeia nome do estado para sigla.
 
+### `src/composables/useNotificacoes.js`
+Estado singleton das notificações:
+- `notificacoes` (`ref`), `naoLidas` (`computed`).
+- `iniciarNotificacoes()` — conecta o **WebSocket** (`/ws/notificacoes?token=JWT`), carrega a lista e inicia um **refresh periódico** (45 s).
+- `pararNotificacoes()` — fecha o WebSocket e limpa o estado (chamado no logout).
+- `marcarLida(n)` / `marcarTodasLidas()`.
+- **Som**: ao chegar notificação toca um "ding-dong" (Web Audio). O `AudioContext` é criado/retomado no primeiro gesto do usuário (política de autoplay dos navegadores).
+- Reconexão automática com backoff se o WebSocket cair.
+
 ## Views
 
 ### LoginView
@@ -72,34 +84,44 @@ Formulário e-mail/senha → `api.auth.login` → `loginComToken` → redirecion
 
 ### PesquisaView
 - Filtros independentes: UF, cidade, busca por nome (`datalist`).
-- Painel de detalhe readonly: badges de estado/cidade, status de "atualização pendente", grid de dados, **fotos** (links), **mapa preview** (Leaflet) e **endereço completo** com links de navegação (Waze/Google/OSM) — tanto pelo **pin** (coordenadas + texto) quanto pelo **endereço digitado**.
+- Painel de detalhe readonly: badges de estado/cidade, status de "atualização pendente", **todos os endereços** (cada um com CEP/rua/número/bairro/cidade/UF, coordenadas, ponto de referência e **contatos**), **fotos** (links), **mapa preview** (Leaflet) e **endereço completo** com links de navegação (Waze/Google/OSM) por endereço.
 - Ações: Editar (se `editar`), Excluir (se `deletar`), Exportar Excel (se `exportar`).
+- **Solicitações:** botão "📋 Não encontrei o cliente — abrir solicitação" (quando a busca não acha nada) e "📞 Solicitar contato atualizado" (quando o cliente existe), ambos com modal de descrição.
+- Seleção via URL `?cliente=ID` ou `?codigo=C100` (usado ao clicar na notificação de solicitação concluída).
 
 ### EditarView
 - Seleção do cliente (UF → cidade → busca), com pré-seleção via `?cliente=id`.
-- Formulário de edição com mapa interativo:
+- **Abas de endereços**: o cliente pode ter N lojas/endereços; cada aba tem seu próprio formulário, mapa e lista de **contatos** (vários por endereço). Botões "+ Adicionar" e "× Remover".
+- Mapa interativo por endereço ativo:
   - Arrastar pin → atualiza lat/lng → **reverse geocoding** (debounce 600 ms) preenche rua/numero/cep/cidade/estado.
   - Botão "Pegar Localização Atual" (Geolocation API).
   - Botão "Reposicionar pin no endereço digitado" (forward geocoding).
   - **Detecção de divergência** número digitado × número do pin → modal de confirmação antes de salvar.
 - Fotos: upload da galeria ou câmera (`capture="environment"`), visualização e exclusão.
 - Bloqueio em modo `somenteLeitura` quando cliente está `atualizando` (alteração pendente).
-- Salvar → `PUT /api/clientes/{id}`; se o usuário não tem `aprovar`, o backend cria a submissão e o banner informa "Submissão enviada para aprovação".
+- Salvar → `PUT /api/clientes/{id}` (envia a lista completa de `enderecos`); se o usuário não tem `aprovar`, o backend cria a submissão e o banner informa "Submissão enviada para aprovação".
 
 ### CadastrarView
-Formulário de criação com máscara de telefone, validação mínima e redirecionamento para a pesquisa após sucesso.
+- Formulário de criação com máscara de telefone, validação de **coordenadas** (lat/lng dentro da faixa), **endereços dinâmicos** (add/remove) e **contatos por endereço**.
+- Pré-preenchimento via `?nome=&codigo=&obs=` (quando o time clica em "Cadastrar cliente" a partir de uma solicitação concluída). Redireciona para `?retorno=` após sucesso (default: pesquisa).
 
 ### CargaView
-- Download de **template**, upload por clique/arrastar e soltar, preview (cards de resumo novos × alterados com diff `de → para`), e confirmação da aplicação.
+- Download de **template**, upload por clique/arrastar e soltar, preview (cards de resumo novos × alterados com diff `de → para` e endereços), e confirmação da aplicação.
 - Exibe contadores de resultado ao aplicar.
+- Template com as colunas do novo formato (uma linha por endereço + contatos).
 
 ### AprovacoesView
 - Filtros por status (pendente/aprovado/editada/recusada/todas, com contagens) e por empresa do solicitante (AC/SIN).
-- Card por submissão: status, autor, data, diff **atual × proposto** (destaca campos alterados), snapshot de já revisadas.
+- Card por submissão: status, autor, data, diff **atual × proposto** (inclui endereços e contatos, destacando alterações), snapshot de já revisadas.
 - Ações para pendentes: **Editar e aprovar** (modal com formulário), **Aprovar**, **Recusar** (modal com motivo).
 
+### SolicitacoesView
+- Lista de solicitações com filtros por status (contagens) e tipo (cadastro/contato).
+- **Time** (perm `solicitacoes` ou admin): vê todas e pode **Iniciar atendimento**, **Concluir** (com nota e código do cliente cadastrado) ou **Recusar** (com motivo). Botões "➕ Cadastrar cliente" e "✏️ Editar cliente" aparecem logo que a solicitação chega.
+- **Usuários comuns**: veem somente as próprias solicitações e o status.
+
 ### AdminView
-- CRUD de usuários: formulário com nome, e-mail, role, empresa, senha, ativo e **checkboxes de permissões granulares**.
+- CRUD de usuários: formulário com nome, e-mail, role, empresa, senha, ativo e **checkboxes de permissões granulares** (incluindo `solicitacoes`).
 - Tabela de usuários com badges de role/empresa/permissões/status, edição e exclusão (impossível excluir a si mesmo).
 
 ### SemAcessoView

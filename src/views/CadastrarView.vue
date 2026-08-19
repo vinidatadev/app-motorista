@@ -221,12 +221,26 @@ async function salvar() {
     msgTipo.value = 'erro'
     return
   }
+  // Valida coordenadas antes de enviar (evita erro de overflow no banco)
+  for (const e of form.value.enderecos) {
+    const lat = e.latitude
+    const lng = e.longitude
+    if (lat !== null && lat !== '' && (isNaN(Number(lat)) || Number(lat) < -90 || Number(lat) > 90)) {
+      msg.value = `Latitude inválida no endereço "${e.nome || (form.value.enderecos.indexOf(e) + 1)}": use um valor entre -90 e 90.`
+      msgTipo.value = 'erro'
+      return
+    }
+    if (lng !== null && lng !== '' && (isNaN(Number(lng)) || Number(lng) < -180 || Number(lng) > 180)) {
+      msg.value = `Longitude inválida no endereço "${e.nome || (form.value.enderecos.indexOf(e) + 1)}": use um valor entre -180 e 180.`
+      msgTipo.value = 'erro'
+      return
+    }
+  }
   salvando.value = true
   msg.value = ''
   try {
     const payload = {
       ...form.value,
-      estado: (form.value.estado || '').toUpperCase(),
       enderecos: form.value.enderecos.map(e => ({
         nome: e.nome || null,
         cep: e.cep || null,
@@ -249,7 +263,8 @@ async function salvar() {
     msg.value = 'Cliente cadastrado com sucesso!'
     msgTipo.value = 'ok'
     form.value = formInit()
-    setTimeout(() => router.push('/clientes/pesquisa'), 1200)
+    const destino = route.query.retorno || '/clientes/pesquisa'
+    setTimeout(() => router.push(destino), 1200)
   } catch (e) {
     msg.value = 'Erro: ' + e.message
     msgTipo.value = 'erro'

@@ -188,7 +188,8 @@ def require_permission(*permissions: str):
     Factory que retorna uma dependência FastAPI exigindo permissões granulares.
     Admin sempre passa. Users precisam ter TODAS as permissões listadas.
 
-    Permissões válidas: 'visualizar', 'editar', 'criar', 'deletar', 'carga', 'exportar'
+    Permissões válidas: 'visualizar', 'editar', 'criar', 'deletar', 'carga', 'exportar',
+    'aprovar', 'solicitacoes'
     """
     from database import get_db
 

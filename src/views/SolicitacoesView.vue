@@ -25,7 +25,7 @@
             v-for="t in tipoList"
             :key="t.value"
             :class="['btn-status', { active: filtroTipo === t.value }]"
-            @click="filtroTipo = t.value; carregar()"
+            @click="mudarFiltroTipo(t.value)"
           >{{ t.label }}</button>
         </div>
       </div>
@@ -62,22 +62,20 @@
           </p>
 
           <!-- Ações do time -->
-          <div v-if="ehEquipe && s.status !== 'concluida' && s.status !== 'recusada'" class="acoes-sol">
-            <button class="btn btn-secondary" @click="mudarStatus(s, 'em_andamento')" :disabled="processandoId === s.id || s.status === 'em_andamento'">
-              {{ s.status === 'em_andamento' ? 'Em andamento...' : 'Iniciar atendimento' }}
-            </button>
-            <button class="btn btn-success" @click="abrirConcluir(s)" :disabled="processandoId === s.id">✓ Concluir</button>
-            <button class="btn btn-danger" @click="abrirRecusar(s)" :disabled="processandoId === s.id">✕ Recusar</button>
-          </div>
-
-          <!-- Links rápidos pós-conclusão -->
-          <div v-if="s.status === 'concluida'" class="acoes-sol">
+          <div v-if="ehEquipe" class="acoes-sol">
             <button v-if="s.tipo === 'novo_cliente'" class="btn btn-primary" @click="cadastrarCliente(s)">
               ➕ Cadastrar cliente
             </button>
             <button v-if="s.tipo === 'atualizar_contato' && s.cliente_id" class="btn btn-primary" @click="editarCliente(s)">
               ✏️ Editar cliente
             </button>
+            <template v-if="s.status !== 'concluida' && s.status !== 'recusada'">
+              <button class="btn btn-secondary" @click="mudarStatus(s, 'em_andamento')" :disabled="processandoId === s.id || s.status === 'em_andamento'">
+                {{ s.status === 'em_andamento' ? 'Em andamento...' : 'Iniciar atendimento' }}
+              </button>
+              <button class="btn btn-success" @click="abrirConcluir(s)" :disabled="processandoId === s.id">✓ Concluir</button>
+              <button class="btn btn-danger" @click="abrirRecusar(s)" :disabled="processandoId === s.id">✕ Recusar</button>
+            </template>
           </div>
         </article>
       </div>
@@ -90,9 +88,14 @@
       <div class="modal-card">
         <h3>✓ Concluir solicitação</h3>
         <p class="modal-sub">Cliente: <strong>{{ modalConcluir.cliente_nome }}</strong></p>
+        <div v-if="modalConcluir.tipo === 'novo_cliente'" class="field">
+          <label>Código do cliente cadastrado</label>
+          <input v-model="formResolucao.codigo" placeholder="ex: C200" />
+          <small class="field-hint">Informe o código usado no cadastro. Assim o motorista abre o cliente direto na Pesquisa ao clicar na notificação.</small>
+        </div>
         <div class="field">
           <label>Nota da resolução (opcional)</label>
-          <textarea v-model="formResolucao.obs" rows="2" placeholder="Ex.: cliente cadastrado com sucesso, código C200..."></textarea>
+          <textarea v-model="formResolucao.obs" rows="2" placeholder="Ex.: cliente cadastrado com sucesso..."></textarea>
         </div>
         <div class="modal-botoes">
           <button class="btn btn-secondary" @click="fecharConcluir" :disabled="processandoId">Cancelar</button>
@@ -144,6 +147,7 @@ const tipoList = [
 ]
 
 const solicitacoes = ref([])
+const todas = ref([])
 const contagens = ref({})
 const ehEquipe = ref(false)
 const loading = ref(false)
@@ -155,7 +159,7 @@ const msgTipo = ref('ok')
 
 const modalConcluir = ref(null)
 const modalRecusar = ref(null)
-const formResolucao = ref({ obs: '' })
+const formResolucao = ref({ obs: '', codigo: '' })
 
 const filtroLabel = computed(() => {
   const s = statusList.find(x => x.value === filtroStatus.value)
@@ -167,18 +171,16 @@ onMounted(() => carregar())
 async function carregar() {
   loading.value = true
   try {
-    const data = await api.solicitacoes.listar({
-      status: filtroStatus.value || null,
-      tipo: filtroTipo.value || null
-    })
+    // Busca tudo de uma vez e filtra no cliente — assim os contadores
+    // (Abertas, Em andamento...) refletem a lista completa.
+    const data = await api.solicitacoes.listar()
     ehEquipe.value = data.eh_equipe
-    solicitacoes.value = data.solicitacoes || []
-    contagens.value = {
-      aberta: 0, em_andamento: 0, concluida: 0, recusada: 0
-    }
-    for (const s of solicitacoes.value) {
+    todas.value = data.solicitacoes || []
+    contagens.value = { aberta: 0, em_andamento: 0, concluida: 0, recusada: 0 }
+    for (const s of todas.value) {
       if (contagens.value[s.status] != null) contagens.value[s.status]++
     }
+    aplicarFiltros()
   } catch (e) {
     msg.value = 'Erro ao carregar: ' + e.message
     msgTipo.value = 'erro'
@@ -187,9 +189,21 @@ async function carregar() {
   }
 }
 
+function aplicarFiltros() {
+  solicitacoes.value = todas.value.filter(s =>
+    (!filtroStatus.value || s.status === filtroStatus.value) &&
+    (!filtroTipo.value || s.tipo === filtroTipo.value)
+  )
+}
+
 function mudarFiltroStatus(v) {
   filtroStatus.value = v
-  carregar()
+  aplicarFiltros()
+}
+
+function mudarFiltroTipo(v) {
+  filtroTipo.value = v
+  aplicarFiltros()
 }
 
 async function mudarStatus(s, status) {
@@ -210,7 +224,7 @@ async function mudarStatus(s, status) {
 
 function abrirConcluir(s) {
   modalConcluir.value = s
-  formResolucao.value.obs = ''
+  formResolucao.value = { obs: '', codigo: s.cliente_codigo || '' }
 }
 function fecharConcluir() { modalConcluir.value = null }
 async function confirmarConcluir() {
@@ -219,7 +233,7 @@ async function confirmarConcluir() {
 
 function abrirRecusar(s) {
   modalRecusar.value = s
-  formResolucao.value.obs = ''
+  formResolucao.value = { obs: '', codigo: '' }
 }
 function fecharRecusar() { modalRecusar.value = null }
 async function confirmarRecusar() {
@@ -233,7 +247,8 @@ async function resolver(s, status) {
   try {
     await api.solicitacoes.status(s.id, {
       status,
-      observacao_resolucao: formResolucao.value.obs.trim() || null
+      observacao_resolucao: formResolucao.value.obs.trim() || null,
+      cliente_codigo: status === 'concluida' ? (formResolucao.value.codigo.trim() || null) : null
     })
     modalConcluir.value = null
     modalRecusar.value = null
@@ -253,7 +268,8 @@ function cadastrarCliente(s) {
   if (s.cliente_nome) q.set('nome', s.cliente_nome)
   if (s.cliente_codigo) q.set('codigo', s.cliente_codigo)
   if (s.descricao) q.set('obs', s.descricao)
-  router.push(`/clientes/cadastrar${q.toString() ? '?' + q.toString() : ''}`)
+  q.set('retorno', '/solicitacoes')
+  router.push(`/clientes/cadastrar?${q.toString()}`)
 }
 
 function editarCliente(s) {
@@ -363,12 +379,15 @@ function nomeComEmpresa(nome, empresa) {
 }
 .modal-card h3 { font-size: 1.05rem; font-weight: 700; color: #0f172a; margin-bottom: 0.35rem; }
 .modal-sub { font-size: 0.82rem; color: #64748b; margin-bottom: 0.8rem; }
+.modal-card .field { margin-bottom: 0.7rem; }
 .modal-card .field label { display: block; font-size: 0.78rem; font-weight: 600; color: #475569; margin-bottom: 0.3rem; }
-.modal-card textarea {
+.modal-card input, .modal-card textarea {
   width: 100%; padding: 0.5rem 0.7rem; border: 1px solid #dbe2ee; border-radius: 8px;
-  font-size: 0.9rem; outline: none; background: #fff; box-sizing: border-box; font-family: inherit; resize: vertical;
+  font-size: 0.9rem; outline: none; background: #fff; box-sizing: border-box; font-family: inherit;
 }
-.modal-card textarea:focus { border-color: #1f5bf0; box-shadow: 0 0 0 4px rgba(31,91,240,0.12); }
+.modal-card input:focus, .modal-card textarea:focus { border-color: #1f5bf0; box-shadow: 0 0 0 4px rgba(31,91,240,0.12); }
+.modal-card textarea { resize: vertical; }
+.field-hint { display: block; font-size: 0.72rem; color: #94a3b8; margin-top: 0.3rem; line-height: 1.35; }
 .modal-botoes { display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 1rem; flex-wrap: wrap; }
 @keyframes modal-in {
   from { opacity: 0; transform: translateY(8px) scale(0.98); }

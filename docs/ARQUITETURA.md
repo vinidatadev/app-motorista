@@ -10,12 +10,14 @@ A aplicação é dividida em **frontend SPA (Vue 3)** e **API REST (FastAPI)**, 
    ▼
  ┌─────────────┐      /api/*        ┌──────────────────┐
  │  nginx      │ ─────────────────► │  FastAPI (uvicorn)│
- │ (static+csp)│                     └───────┬──────────┘
- └─────────────┘                             │
+ │ (static+csp)│   /ws/notificacoes │      ▲            │
+ └─────────────┘ ◄──── WebSocket ────┘      │           │
                                              ├─► PostgreSQL 16
                                              ├─► MinIO (S3)  ──► fotos (presigned URLs)
                                              └─► OpenCage / Nominatim (geocoding)
 ```
+
+O frontend conecta um **WebSocket** (`/ws/notificacoes`, autenticado por JWT) para receber notificações em tempo real. O backend também serve os endpoints REST de notificações e solicitações.
 
 ## Fluxos principais
 
@@ -39,11 +41,24 @@ O aprovador então revisa na tela **Aprovações**:
 
 | Ação | Endpoint | Efeito |
 |---|---|---|
-| Aprovar | `POST /api/alteracoes/{id}/aprovar` | Aplica snapshot ao cliente, volta status p/ `aprovado`, registra revisor |
-| Editar e aprovar | `PUT /api/alteracoes/{id}/editar` | Aprovador ajusta o snapshot e aplica (status `editado`) |
-| Recusar | `POST /api/alteracoes/{id}/recusar` | Mantém endereço atual, limpa `alterado_por_*`, registra motivo |
+| Aprovar | `POST /api/alteracoes/{id}/aprovar` | Aplica snapshot (incl. endereços/contatos) ao cliente, volta status p/ `aprovado`, registra revisor, **notifica o motorista** |
+| Editar e aprovar | `PUT /api/alteracoes/{id}/editar` | Aprovador ajusta o snapshot e aplica (status `editado`), **notifica o motorista** |
+| Recusar | `POST /api/alteracoes/{id}/recusar` | Mantém endereço atual, limpa `alterado_por_*`, registra motivo, **notifica o motorista** |
 
 Ao aprovar/recusar, `alterado_por_*` continua apontando para **quem solicitou** (o motorista) — o revisor fica em `revisado_por_*`.
+
+### 2b. Notificações em tempo real
+
+- Cada usuário autenticado conecta um **WebSocket** (`/ws/notificacoes?token=JWT`). O `ConnectionManager` (`backend/notify.py`) mantém o mapa `user_id → conexões`.
+- Ao **submeter** uma alteração, o backend grava uma `Notificacao` (`nova_alteracao`) para os **aprovadores** (admin + usuários com `aprovar` da **mesma empresa** do solicitante) e faz push no WebSocket.
+- Ao **aprovar/recusar/editar**, o backend notifica o **motorista** (`aprovada`/`recusada`/`editada`).
+- O frontend (`useNotificacoes.js`) mantém o sino atualizado via push + um **refresh periódico** (45 s) e ao abrir o menu — rede de segurança caso o WebSocket caia.
+
+### 2c. Solicitações (cadastro novo / contato atualizado)
+
+- Na **Pesquisa**, o usuário abre uma `Solicitacao` (`novo_cliente` quando não acha o cliente, ou `atualizar_contato` quando os contatos estão desatualizados).
+- O **time de solicitações** (permissão `solicitacoes` + admin) é notificado (`nova_solicitacao`) e atende na tela **Solicitações**: inicia, conclui (com nota e opcionalmente o `cliente_codigo` cadastrado) ou recusa.
+- Ao **concluir/recusar**, o solicitante recebe a notificação de volta; se vinculado a um cliente, a notificação abre o cliente na **Pesquisa**.
 
 ### 3. Carga em massa (Excel)
 
@@ -52,6 +67,7 @@ Ao aprovar/recusar, `alterado_por_*` continua apontando para **quem solicitou** 
    - `novos` (código inexistente → insert)
    - `alterados` (código existente → comparação campo a campo com `de`/`para`)
 3. `POST /api/clientes/carga/aplicar` executa o **upsert por `codigo`**, com **geocodificação automática** para registros sem lat/lng (limitada a 50 por request, 1s de intervalo para respeitar o rate limit do Nominatim).
+4. **Formato: uma linha por endereço.** O mesmo `codigo` pode repetir em várias linhas — cada linha vira um endereço do cliente, com até 3 contatos (colunas `contato1..3_nome/telefone`). Ao aplicar, os endereços são substituídos (o primeiro vira o espelho flat).
 
 ### 4. Geocoding
 
@@ -74,7 +90,7 @@ A chave é usada em dois lugares: no **backend** (`OPENCAGE_KEY` → `geocode.py
 | auth_provider | String(20) | `local` \| `microsoft` |
 | role | String(20) | `admin` \| `user` |
 | empresa | String(10) | `AC` \| `SIN` (obrigatório) |
-| permissions | ARRAY(String) | `visualizar, editar, criar, deletar, carga, exportar, aprovar` |
+| permissions | ARRAY(String) | `visualizar, editar, criar, deletar, carga, exportar, aprovar, solicitacoes` |
 | is_active | Boolean | |
 | created_at | DateTime(tz) | |
 
@@ -84,19 +100,43 @@ A chave é usada em dois lugares: no **backend** (`OPENCAGE_KEY` → `geocode.py
 | id | UUID (PK) | |
 | codigo | String(50), unique | Chave do upsert em carga |
 | nome_razao_social | String(150) | |
-| telefone / pessoa_contato / cep / rua / numero / bairro / cidade / estado | String | Dados de contato e endereço |
-| latitude / longitude | Numeric | Definidos por geocoding ou manual |
-| ponto_referencia / observacao | String | Campos livres do motorista |
+| telefone / pessoa_contato | String | Contato principal do cliente |
+| cep / rua / numero / bairro / cidade / estado | String | **Espelho do primeiro endereço** (compatibilidade com filtros/exportação) |
+| latitude / longitude | Numeric | **Espelho do primeiro endereço** |
+| ponto_referencia / observacao | String | Campos livres (também espelhados do 1º endereço) |
 | status_endereco | String(20) | `aprovado` \| `atualizando` |
 | alterado_por_user_id / alterado_por_nome / alterado_por_empresa / alterado_em | — | Quem solicitou a última alteração |
 | updated_at | DateTime(tz) | Auto (SQLAlchemy `onupdate`) |
+
+> **Modelo normalizado de endereços/contatos:** os dados de endereço vivem em `cliente_enderecos` (vários por cliente) e os contatos em `cliente_contatos` (vários por endereço). Os campos flat de `clientes` apenas **espelham o primeiro endereço** para não quebrar filtros, exportação e a carga em massa — a fonte de verdade é a tabela de endereços.
+
+### cliente_enderecos
+| Campo | Tipo | Notas |
+|---|---|---|
+| id | UUID (PK) | |
+| cliente_id | UUID | Dono do endereço |
+| nome | String(100)? | Apelido (ex.: "Loja 01", "Filial Centro") |
+| ordem | Integer | 0 = principal |
+| cep / rua / numero / bairro / cidade / estado | String | Endereço |
+| latitude / longitude | Numeric | Coordenadas |
+| ponto_referencia / observacao | String | Campos livres |
+| created_at / updated_at | DateTime(tz) | |
+
+### cliente_contatos
+| Campo | Tipo | Notas |
+|---|---|---|
+| id | UUID (PK) | |
+| endereco_id | UUID | Endereço ao qual pertence |
+| nome | String(100) | Nome do contato |
+| telefone | String(20)? | Telefone |
+| created_at | DateTime(tz) | |
 
 ### cliente_alteracoes
 | Campo | Tipo | Notas |
 |---|---|---|
 | id | UUID (PK) | |
 | cliente_id | UUID | FK lógica (sem constraint) |
-| snapshot | JSON | Campos propostos pelo motorista |
+| snapshot | JSON | Campos propostos (inclui `enderecos` com `contatos`) |
 | motorista_user_id / nome / empresa | — | Quem solicitou |
 | status | String(20) | `pendente` \| `aprovado` \| `recusado` \| `editado` |
 | observacao_revisao | String(500)? | Motivo de recusa / obs. da revisão |
@@ -111,7 +151,32 @@ A chave é usada em dois lugares: no **backend** (`OPENCAGE_KEY` → `geocode.py
 | url | String(500) | URL pública armazenada (nunca exposta — serve só p/ extrair bucket/key) |
 | created_at | DateTime(tz) | |
 
-> **Nota:** o bucket é **privado**. As fotos são sempre servidas por **presigned URLs** com expiração de 1h geradas pela API (`storage.presign_url`).
+> **Nota:** o bucket é **privado**. As fotos são sempre servidas por **presigned URLs** com expiração de 1h geradas pela API (`storage.presign_url`). As URLs são assinadas contra `MINIO_PUBLIC_URL` (host acessível pelo navegador), **não** contra o endpoint interno do Docker.
+
+### notificacoes
+| Campo | Tipo | Notas |
+|---|---|---|
+| id | UUID (PK) | |
+| user_id | UUID | Destinatário |
+| tipo | String(30) | `nova_alteracao`, `aprovada`, `recusada`, `editada`, `nova_solicitacao`, `solicitacao_concluida`, `solicitacao_recusada` |
+| titulo / mensagem | String | Texto exibido no sino |
+| link | String(300)? | Rota do frontend ao clicar |
+| cliente_id / alteracao_id | UUID? | Referências de contexto |
+| lida | Boolean | |
+| created_at | DateTime(tz) | |
+
+### solicitacoes
+| Campo | Tipo | Notas |
+|---|---|---|
+| id | UUID (PK) | |
+| tipo | String(30) | `novo_cliente` \| `atualizar_contato` |
+| status | String(20) | `aberta` \| `em_andamento` \| `concluida` \| `recusada` |
+| solicitante_user_id / nome / empresa | — | Quem abriu |
+| cliente_id / cliente_codigo / cliente_nome | — | Cliente de contexto |
+| descricao | String(5000)? | Detalhes da solicitação |
+| resolvido_por_user_id / nome / empresa | — | Quem atendeu |
+| observacao_resolucao | String(2000)? | Nota/motivo da resolução |
+| created_at / resolvido_at | DateTime(tz) | |
 
 ## Autorização
 
@@ -124,6 +189,7 @@ A chave é usada em dois lugares: no **backend** (`OPENCAGE_KEY` → `geocode.py
   - `deletar` → excluir cliente
   - `carga` → preview/aplicar planilha
   - `exportar` → exportar Excel
+  - `solicitacoes` → atender/alterar status de solicitações e ver todas (time de solicitações)
 
 As dependências FastAPI `require_user(required_role=...)` e `require_permission(...)` em `backend/auth.py` centralizam essa lógica (ambas re-leem o usuário do banco a cada request — mudanças de permissão valem imediatamente, sem esperar o token expirar).
 
@@ -133,6 +199,8 @@ O sistema distingue dois grupos de trabalho por empresa. A empresa é armazenada
 
 ## Considerações de desempenho
 
-- `listar_clientes` e `obter_cliente` fazem **1 query de fotos por cliente** (N+1). Em listas grandes isso é custoso — o próprio código sinaliza "otimizar depois". Sugestão: carregar fotos em batch com `IN` de ids.
+- `listar_clientes` carrega fotos, endereços e contatos em **lote** (`WHERE ... IN (...)`) — sem N+1.
 - `listar_alteracoes` faz um `JOIN` com clientes e carrega tudo sem paginação — em volumes grandes vale paginar.
+- `GET /api/users/` carrega tudo sem paginação — paginar em escala.
 - Upload de fotos valida **magic bytes** antes de gravar (JPEG/PNG/GIF/WEBP), impedindo conteúdo arbitrário no bucket.
+- WebSocket de notificações mantém 1 conexão por usuário; o `ConnectionManager` é leve (mapa user_id → sockets).

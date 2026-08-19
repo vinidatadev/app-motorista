@@ -12,7 +12,7 @@ from limiter import limiter
 router = APIRouter(prefix="/users", tags=["users"])
 
 # Permissoes granulares validas
-PERMISSOES_VALIDAS = {"visualizar", "editar", "criar", "deletar", "carga", "exportar", "aprovar"}
+PERMISSOES_VALIDAS = {"visualizar", "editar", "criar", "deletar", "carga", "exportar", "aprovar", "solicitacoes"}
 
 admin_only = require_user(required_role="admin")
 

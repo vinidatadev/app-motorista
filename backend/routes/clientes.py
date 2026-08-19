@@ -65,8 +65,8 @@ class EnderecoIn(BaseModel):
     bairro: constr(strip_whitespace=True, max_length=100) | None = None
     cidade: constr(strip_whitespace=True, max_length=100) | None = None
     estado: constr(strip_whitespace=True, min_length=2, max_length=2) | None = None
-    latitude: float | None = None
-    longitude: float | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     ponto_referencia: constr(strip_whitespace=True, max_length=200) | None = None
     observacao: constr(strip_whitespace=True, max_length=2000) | None = None
     contatos: list[ContatoIn] = []
@@ -226,8 +226,8 @@ class ClienteCreate(BaseModel):
     bairro: constr(strip_whitespace=True, max_length=100) | None = None
     cidade: constr(strip_whitespace=True, max_length=100) | None = None
     estado: constr(strip_whitespace=True, min_length=2, max_length=2) | None = None
-    latitude: float | None = None
-    longitude: float | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     ponto_referencia: constr(strip_whitespace=True, max_length=200) | None = None
     observacao: constr(strip_whitespace=True, max_length=2000) | None = None
     # Novos enderecos (listas de EnderecoIn). O primeiro vira o principal.
@@ -245,8 +245,8 @@ class ClienteUpdate(BaseModel):
     bairro: constr(strip_whitespace=True, max_length=100) | None = None
     cidade: constr(strip_whitespace=True, max_length=100) | None = None
     estado: constr(strip_whitespace=True, min_length=2, max_length=2) | None = None
-    latitude: float | None = None
-    longitude: float | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     ponto_referencia: constr(strip_whitespace=True, max_length=200) | None = None
     observacao: constr(strip_whitespace=True, max_length=2000) | None = None
     # Se enviado, substitui TODOS os enderecos/contatos do cliente.
@@ -1271,8 +1271,8 @@ class EditarAlteracaoBody(BaseModel):
     bairro: constr(strip_whitespace=True, max_length=100) | None = None
     cidade: constr(strip_whitespace=True, max_length=100) | None = None
     estado: constr(strip_whitespace=True, min_length=2, max_length=2) | None = None
-    latitude: float | None = None
-    longitude: float | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     ponto_referencia: constr(strip_whitespace=True, max_length=200) | None = None
     observacao: constr(strip_whitespace=True, max_length=2000) | None = None
 

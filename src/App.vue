@@ -66,7 +66,7 @@
 import { onMounted, onBeforeUnmount, watch, computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { autenticado, carregarSessao, logout, getUsuario, temPermissao, sincronizarPermissoes } from './composables/useAuth'
-import { notificacoes, naoLidas, iniciarNotificacoes, pararNotificacoes, marcarLida, marcarTodasLidas } from './composables/useNotificacoes'
+import { notificacoes, naoLidas, iniciarNotificacoes, pararNotificacoes, marcarLida, marcarTodasLidas, carregar } from './composables/useNotificacoes'
 
 const router = useRouter()
 const route = useRoute()
@@ -84,12 +84,19 @@ const notifWrap = ref(null)
 
 function toggleMenu() {
   menuAberto.value = !menuAberto.value
+  // Sempre sincroniza a lista ao abrir o sino (mesmo se o WS estiver fora)
+  if (menuAberto.value) carregar()
 }
 
 function abrirNotificacao(n) {
   menuAberto.value = false
   marcarLida(n)
-  const link = n.link || (n.tipo === 'nova_alteracao' ? '/aprovacoes?status=pendente' : '/clientes/pesquisa')
+  // A tela de Solicitações é da equipe: se o usuário não faz parte dela, a
+  // notificação apenas abre o cliente/área adequada (ou nada, só marca como lida).
+  let link = n.link || (n.tipo === 'nova_alteracao' ? '/aprovacoes?status=pendente' : '/clientes/pesquisa')
+  if (link.startsWith('/solicitacoes') && !ehEquipeSolicitacoes.value) {
+    link = n.cliente_id ? `/clientes/pesquisa?cliente=${n.cliente_id}` : '/clientes/pesquisa'
+  }
   router.push(link)
 }
 

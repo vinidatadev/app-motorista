@@ -16,9 +16,10 @@ uvicorn main:app --reload --port 8000
 
 Requisitos: PostgreSQL + MinIO acessíveis pelos valores de `DATABASE_URL` e `MINIO_ENDPOINT`. No arranque (lifespan) o backend:
 1. Valida que `JWT_SECRET` tem ≥ 32 caracteres (aborta se não tiver).
-2. Cria tabelas (`Base.metadata.create_all`) e aplica migrações leves via `ALTER TABLE ... IF NOT EXISTS` + backfill da coluna `empresa`.
-3. Garante o bucket MinIO (`clientes`).
-4. Roda o seed demo se `SEED_DEMO=1` (só popula tabelas vazias).
+2. Cria tabelas (`Base.metadata.create_all`) e aplica migrações leves via `ALTER TABLE ... IF NOT EXISTS` + backfill de `empresa` e da permissão `solicitacoes`.
+3. Migra o endereço flat existente para a tabela `cliente_enderecos` (idempotente — só quando vazia).
+4. Garante o bucket MinIO (`clientes`).
+5. Roda o seed demo se `SEED_DEMO=1` (só popula tabelas vazias).
 
 ### Frontend
 
@@ -61,7 +62,7 @@ Volumes: `pg_data` (PostgreSQL) e `minio_data` (objetos).
 | `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` | | Azure AD (opcional; usado para aceitar tokens Microsoft) |
 | `MINIO_ENDPOINT` | | Host:porta do MinIO (default `minio:9000`) |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | | Credenciais (default `minioadmin` — **trocar em produção**) |
-| `MINIO_PUBLIC_URL` | | URL pública para acesso (default `http://localhost:9000`) |
+| `MINIO_PUBLIC_URL` | | URL pública para acesso (default `http://localhost:9000`). As **presigned URLs de fotos são assinadas contra este host** (e não contra `MINIO_ENDPOINT` interno) — em produção deve ser o host acessível pelo navegador |
 | `MINIO_CLIENTES_BUCKET` | | Nome do bucket de fotos (default `clientes`) |
 | `OPENCAGE_KEY` | | Chave OpenCage (produção); vazio → fallback Nominatim |
 | `SEED_DEMO` | | `1` para carregar dados demo em tabelas vazias (só dev) |
@@ -94,23 +95,26 @@ Multi-stage:
 - HTML nunca cacheado (`expires -1`) — mantém CSP/atualizações sempre frescas.
 - SPA fallback: `try_files $uri $uri/ /index.html`.
 
-> ⚠️ A CSP de produção tem `connect-src` **hardcoded** com `https://backend.devlopplay.site`. Ao implantar em outro domínio, atualize este valor — senão as chamadas à API serão bloqueadas pelo browser.
+> ⚠️ A CSP de produção tem `connect-src` **hardcoded** com `https://backend.devlopplay.site` (e `wss://backend.devlopplay.site` para o WebSocket) e `img-src` com `http://localhost:9000` (fotos do MinIO). Ao implantar em outro domínio, atualize estes valores — senão chamadas à API, notificações e fotos serão bloqueadas pelo browser.
 
 ### nginx.local.conf (dev)
-CSP liberada: permite `http://localhost:8000`, tiles Mapbox/OSM, OpenCage e Nominatim.
+CSP liberada: permite `http://localhost:8000` (+ `ws://localhost:8000` para o WebSocket), fotos do MinIO em `http://localhost:9000`, tiles Mapbox/OSM, OpenCage e Nominatim.
 
 ## Implantação (EasyPanel / VPS)
 
 1. Suba os serviços com `docker compose up --build` (ou via painel, usando os Dockerfiles).
 2. Configure o domínio com HTTPS (o nginx assume `listen 80`; o TLS fica a cargo do proxy reverso/painel).
 3. Defina `NGINX_CONF=nginx.conf` para produção.
-4. Ajuste a CSP (`connect-src`) para o domínio real da API.
+4. Ajuste a CSP (`connect-src` + `wss://` + `img-src` do MinIO) para o domínio real da API/fotos.
 5. No `backend/.env`:
    - `JWT_SECRET` forte (≥ 32 chars).
    - `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` fora do padrão.
+   - `MINIO_PUBLIC_URL` com o host público acessível pelo navegador (base das presigned URLs das fotos).
    - `SEED_DEMO=` vazio e `ALLOW_SETUP=` vazio.
    - Crie o primeiro admin com `ALLOW_SETUP=1` temporário + `POST /api/auth/setup`, e depois desative.
 6. `ALLOWED_ORIGINS` com o domínio real do frontend.
+
+> **WebSocket em produção:** o WebSocket (`/ws/notificacoes`) precisa de **upgrade** habilitado no proxy reverso/painel. Traefik/EasyPanel/nginx habilitam por padrão; se usar outro proxy, garanta `Upgrade`/`Connection: upgrade`. Em HTTPS o frontend usa `wss://`.
 
 ## Segurança implementada
 

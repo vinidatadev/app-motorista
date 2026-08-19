@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Solicitacao, User
+from models import Solicitacao, User, Cliente
 from auth import require_user, require_permission
 from limiter import limiter
 from notify import criar_notificacao, enviar_notificacao
@@ -45,6 +45,8 @@ class SolicitacaoCreate(BaseModel):
 class StatusBody(BaseModel):
     status: str
     observacao_resolucao: constr(strip_whitespace=True, max_length=2000) | None = None
+    # Código do cliente cadastrado (usado ao concluir uma solicitação de novo_cliente)
+    cliente_codigo: constr(strip_whitespace=True, max_length=50) | None = None
 
 
 def _eh_equipe(user: dict) -> bool:
@@ -176,6 +178,16 @@ async def atualizar_status_solicitacao(
     s.status = body.status
     s.observacao_resolucao = body.observacao_resolucao
 
+    # Ao concluir um pedido de cadastro, tenta vincular o cliente pelo código
+    # informado pelo time (assim a notificação ao motorista abre o cliente).
+    if body.status == "concluida" and body.cliente_codigo:
+        cod = body.cliente_codigo.strip()
+        if cod:
+            cli = (await db.execute(select(Cliente).where(Cliente.codigo == cod))).scalar_one_or_none()
+            if cli:
+                s.cliente_id = cli.id
+                s.cliente_codigo = cli.codigo
+
     notif = None
     if body.status in ("concluida", "recusada"):
         s.resolvido_por_user_id = UUID(user["user_id"])
@@ -184,6 +196,16 @@ async def atualizar_status_solicitacao(
         s.resolvido_at = datetime.now(timezone.utc)
 
         concluida = body.status == "concluida"
+        # Notificação do solicitante abre o cliente na Pesquisa (e não a tela
+        # de Solicitações, que é da equipe).
+        if s.cliente_id:
+            link = f"/clientes/pesquisa?cliente={s.cliente_id}"
+        elif s.cliente_codigo:
+            link = f"/clientes/pesquisa?codigo={s.cliente_codigo}"
+        else:
+            link = "/clientes/pesquisa"
+
+        detalhe = f" ({s.cliente_codigo})" if s.cliente_codigo else ""
         notif = criar_notificacao(
             db,
             s.solicitante_user_id,
@@ -191,9 +213,9 @@ async def atualizar_status_solicitacao(
             titulo="Sua solicitação foi concluída" if concluida else "Sua solicitação foi recusada",
             mensagem=(
                 f"A solicitação de {LABEL_TIPO.get(s.tipo, s.tipo)} de '{s.cliente_nome}' "
-                f"foi {('concluída' if concluida else 'recusada')} por {user['name']}."
+                f"foi {('concluída' if concluida else 'recusada')} por {user['name']}{detalhe}."
             ),
-            link="/solicitacoes",
+            link=link,
             cliente_id=s.cliente_id,
         )
 
