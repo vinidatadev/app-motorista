@@ -38,21 +38,23 @@ LA_WORKSPACE="$RESOURCE_GROUP-logs"
 # Verifica se já existe o workspace
 if ! az monitor log-analytics workspace show --resource-group "$RESOURCE_GROUP" \
     --workspace-name "$LA_WORKSPACE" >/dev/null 2>&1; then
-    LA_ID=$(az monitor log-analytics workspace create --resource-group "$RESOURCE_GROUP" \
-        --workspace-name "$LA_WORKSPACE" --location "$LOCATION" --query id -o tsv)
-else
-    LA_ID=$(az monitor log-analytics workspace show --resource-group "$RESOURCE_GROUP" \
-        --workspace-name "$LA_WORKSPACE" --query id -o tsv)
+    echo "    Criando Log Analytics workspace..."
+    az monitor log-analytics workspace create --resource-group "$RESOURCE_GROUP" \
+        --workspace-name "$LA_WORKSPACE" --location "$LOCATION" -o none
 fi
 
+LA_CUSTOMER_ID=$(az monitor log-analytics workspace show --resource-group "$RESOURCE_GROUP" \
+    --workspace-name "$LA_WORKSPACE" --query customerId -o tsv | tr -d '[:space:]')
 LA_KEY=$(az monitor log-analytics workspace get-shared-keys \
-    --resource-group "$RESOURCE_GROUP" --workspace-name "$LA_WORKSPACE" --query primarySharedKey -o tsv)
+    --resource-group "$RESOURCE_GROUP" --workspace-name "$LA_WORKSPACE" \
+    --query primarySharedKey -o tsv | tr -d '[:space:]')
 
 # Verifica se já existe o environment
 if ! az containerapp env show --resource-group "$RESOURCE_GROUP" --name app-motorista-env >/dev/null 2>&1; then
+    echo "    Criando Container Apps environment..."
     az containerapp env create --resource-group "$RESOURCE_GROUP" --name app-motorista-env \
         --location "$LOCATION" \
-        --logs-workspace-id "$LA_ID" --logs-workspace-key "$LA_KEY" -o none
+        --logs-workspace-id "$LA_CUSTOMER_ID" --logs-workspace-key "$LA_KEY" -o none
 fi
 
 JWT_SECRET=$(openssl rand -hex 32)
