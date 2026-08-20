@@ -21,6 +21,9 @@ if IS_AZURE_BLOB:
         BlobServiceClient, generate_blob_sas, BlobSasPermissions,
     )
     from datetime import datetime, timedelta, timezone
+else:
+    # Quando não é Azure, define stub vazio pra evitar NameError nas type hints
+    BlobServiceClient = None
 
 # Buckets que devem ser criados automaticamente na inicializacao
 _ALL_BUCKETS = [CLIENTES_BUCKET]
@@ -41,8 +44,10 @@ _warn_default_creds()
 # Azure Blob (SDK nativo)
 # ---------------------------------------------------------------------------
 
-def _azure_service() -> BlobServiceClient:
+def _azure_service():
     """Cliente do Azure Blob usando a chave de acesso da conta."""
+    if not IS_AZURE_BLOB:
+        raise RuntimeError("Azure Blob não está configurado. Use MinIO localmente.")
     account_url = f"https://{ENDPOINT}"
     return BlobServiceClient(account_url=account_url, credential=SECRET_KEY)
 

@@ -21,4 +21,3 @@ comando_auxiliares.txt
 # Compose e Dockerfiles nao sao copiados pro contexto
 docker-compose*.yml
 Dockerfile
-nginx.local.conf
