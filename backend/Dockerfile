@@ -13,4 +13,5 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Temporariamente usando main-simple para troubleshooting
+CMD ["uvicorn", "main-simple:app", "--host", "0.0.0.0", "--port", "8000"]
