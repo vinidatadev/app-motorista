@@ -266,13 +266,16 @@ function sair() {
   animation: notif-in 0.16s ease-out;
 }
 
-/* Ajuste para mobile: centraliza o menu quando não couber */
+/* Ajuste para mobile: menu responsivo sem scroll horizontal */
 @media (max-width: 640px) {
   .notif-menu {
-    right: auto;
-    left: 50%;
-    transform: translateX(-50%);
-    width: calc(100vw - 2rem);
+    position: fixed;
+    right: 0.5rem;
+    left: 0.5rem;
+    top: 60px;
+    transform: none;
+    width: auto;
+    max-width: calc(100vw - 1rem);
   }
 }
 @keyframes notif-in {

@@ -38,6 +38,14 @@
             </datalist>
           </div>
         </div>
+        
+        <button 
+          v-if="estadoSel || cidadeSel || clienteBusca" 
+          class="btn btn-outline btn-limpar-filtros" 
+          @click="limparFiltros"
+        >
+          🔄 Limpar filtros
+        </button>
       </section>
 
       <!-- Banner de status (submetido p/ aprovacao) -->
@@ -481,6 +489,12 @@ function limparSelecao() {
     enderecos.value = []
     destruirMapa()
   }
+}
+
+function limparFiltros() {
+  estadoSel.value = ''
+  cidadeSel.value = ''
+  limparSelecao()
 }
 
 function onClienteSelecionado() {
@@ -1168,8 +1182,11 @@ async function salvar() {
 .btn-primary { background: linear-gradient(135deg, #3479fb, #1746dc); color: #fff; box-shadow: 0 10px 20px -8px rgba(23,70,220,0.7); }
 .btn-secondary { background: #eef6ff; color: #1746dc; border: 1px solid #bcdcff; }
 .btn-danger { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+.btn-outline { background: #fff; color: #1746dc; border: 1px solid #bcdcff; }
+.btn-outline:hover { background: #eef6ff; }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-secondary:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-limpar-filtros { margin-top: 0.5rem; width: 100%; }
 
 .placeholder { text-align: center; padding: 2.5rem 1rem; color: #94a3b8; }
 .placeholder .empty-icon { font-size: 2.2rem; margin-bottom: 0.4rem; }

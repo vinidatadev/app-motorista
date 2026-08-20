@@ -47,6 +47,14 @@
             {{ clientesFiltrados.length }} cliente(s) encontrados
           </div>
 
+          <button 
+            v-if="estadoSel || cidadeSel || clienteBusca" 
+            class="btn btn-outline mt" 
+            @click="limparFiltros"
+          >
+            🔄 Limpar filtros
+          </button>
+
           <div class="botoes-acao">
             <button v-if="clienteSelecionado && podeEditar" class="btn btn-primary mt" @click="irParaEdicao">
               ✏️ Editar
@@ -467,6 +475,13 @@ function onClienteFilterChange() {
   clienteSelecionado.value = null
 }
 
+function limparFiltros() {
+  estadoSel.value = ''
+  cidadeSel.value = ''
+  clienteBusca.value = ''
+  clienteSelecionado.value = null
+}
+
 function onClienteSelecionado() {
   const nome = clienteBusca.value.trim()
   if (!nome) { clienteSelecionado.value = null; return }
@@ -705,6 +720,8 @@ function nomeComEmpresa(nome, empresa) {
 .btn-primary:hover { opacity: 0.95; }
 .btn-secondary { background: #eef6ff; color: #1746dc; border: 1px solid #bcdcff; }
 .btn-secondary:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-outline { background: #fff; color: #1746dc; border: 1px solid #bcdcff; }
+.btn-outline:hover { background: #eef6ff; }
 .btn-danger { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
 .botoes-acao { display: flex; flex-direction: column; gap: 0.4rem; }
 .btn-sm { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
