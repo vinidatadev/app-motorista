@@ -265,6 +265,16 @@ function sair() {
   z-index: 1200; overflow: hidden;
   animation: notif-in 0.16s ease-out;
 }
+
+/* Ajuste para mobile: centraliza o menu quando não couber */
+@media (max-width: 640px) {
+  .notif-menu {
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100vw - 2rem);
+  }
+}
 @keyframes notif-in {
   from { opacity: 0; transform: translateY(-6px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
