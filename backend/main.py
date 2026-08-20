@@ -98,6 +98,13 @@ app.include_router(users_router, prefix="/api")
 app.include_router(clientes_router, prefix="/api")
 # Sem prefixo: as rotas de notificação já trazem /api/... e o WebSocket é /ws/...
 app.include_router(notificacoes_router)
+app.include_router(solicitacoes_router, prefix="/api")
+
+# Health check endpoint para Container Apps
+@app.get("/health")
+async def health_check():
+    """Endpoint de health check para o Azure Container Apps"""
+    return {"status": "healthy"}
 app.include_router(solicitacoes_router)
 
 @app.get("/health")
