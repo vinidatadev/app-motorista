@@ -127,10 +127,14 @@ def upload_file(key: str, data: bytes, content_type: str, bucket: str | None = N
     """Faz upload e retorna a URL publica (Usa o bucket de clientes se nao for informado)."""
     b = bucket or CLIENTES_BUCKET
     if IS_AZURE_BLOB:
+        from azure.storage.blob import ContentSettings
         cc = _azure_container(b)
-        cc.upload_blob(name=key, data=data, overwrite=True, content_settings={
-            "content_type": content_type,
-        })
+        cc.upload_blob(
+            name=key, 
+            data=data, 
+            overwrite=True, 
+            content_settings=ContentSettings(content_type=content_type)
+        )
         return f"{PUBLIC_URL}/{b}/{key}"
     s3 = _client()
     s3.put_object(Bucket=b, Key=key, Body=data, ContentType=content_type)
