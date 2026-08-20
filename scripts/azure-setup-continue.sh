@@ -64,9 +64,10 @@ MINIO_PUBLIC_URL="https://$STORAGE_ACCOUNT.blob.core.windows.net"
 
 # Backend (verifica se já existe)
 if ! az containerapp show --resource-group "$RESOURCE_GROUP" --name "$BACKEND_APP" >/dev/null 2>&1; then
+    echo "    Criando Container App do backend (com imagem placeholder)..."
     az containerapp create \
         --name "$BACKEND_APP" --resource-group "$RESOURCE_GROUP" --environment app-motorista-env \
-        --image mcr.microsoft.com/azuredocs/aks-helloworld:latest \
+        --image mcr.microsoft.com/k8se/quickstart:latest \
         --target-port 8000 --ingress external --transport auto \
         --cpu 0.5 --memory 1.0Gi --min-replicas 0 --max-replicas 4 \
         --registry-server "$ACR_NAME.azurecr.io" \
@@ -84,6 +85,7 @@ if ! az containerapp show --resource-group "$RESOURCE_GROUP" --name "$BACKEND_AP
             "OPENCAGE_KEY=$OPENCAGE_KEY" \
             "ALLOW_SETUP=1" \
         -o none
+    echo "    IMPORTANTE: Esta e uma imagem placeholder. O GitHub Actions vai substituir pela imagem real do backend."
 fi
 
 BACKEND_FQDN=$(az containerapp show --name "$BACKEND_APP" --resource-group "$RESOURCE_GROUP" \
